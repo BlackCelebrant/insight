@@ -83,14 +83,20 @@ models:
   - name: class_wiki_activity
     description: >
       Unified per-user per-day edit activity across wiki sources. One row per
-      (tenant, source, author, day) with counts of pages edited, total edits,
-      pages created, major edits, minor edits. Derived from page-version
+      (tenant, source, author, day) with counts of pages edited, total edits
+      (logical sessions), and pages created. Derived from page-version
       history (Confluence: wiki_page_versions).
 
       Identity: `author_id` is the source-side identifier (Atlassian accountId
       for Confluence). `author_email` is resolved via LEFT JOIN with
       bronze_jira.jira_user. Silver Step 2 (Identity Resolution) maps
       author_id → person_id.
+
+      Dropped columns (#260): `major_edits` and `minor_edits` were removed
+      because the Confluence Cloud `/pages/{id}/versions` endpoint always
+      returns `minorEdit: false` (verified 2026-05-05). The bronze field
+      `wiki_page_versions.minor_edit` is preserved upstream for forward
+      compatibility but ignored here.
     columns:
       - name: tenant_id
         description: "Tenant isolation field"
@@ -130,25 +136,6 @@ models:
           - not_null
       - name: pages_created
         description: "Pages created on this day (version_number = 1)"
-        tests:
-          - not_null
-      - name: major_edits
-        description: >
-          Raw versions (not sessions) where `minor_edit = false`. Note: this
-          counts version rows, NOT collapsed edit sessions like `total_edits`,
-          so `major_edits >= total_edits` in bursty cases. The signal is
-          effectively `total_versions_authored` because of the dead
-          `minor_edit` flag (see below). Tracked for removal in #260.
-        tests:
-          - not_null
-      - name: minor_edits
-        description: >
-          Raw versions where `minor_edit = true`. The Confluence Cloud
-          `/pages/{id}/versions` API always returns `minorEdit: false`
-          regardless of how the flag was set on PUT (verified empirically
-          on darthvolt.atlassian.net, 2026-05-05). As a result this column
-          is uniformly 0 in practice and `major_edits ≡ count(raw versions)`.
-          Tracked for removal in #260.
         tests:
           - not_null
       - name: source

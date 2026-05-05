@@ -2,8 +2,7 @@
 --
 -- Per-user per-day edit activity rolled up from wiki_page_versions. One row
 -- per (tenant, source, author, day) with counts of pages edited, total edits
--- (sessions, see below), pages created (version_number = 1), major edits,
--- minor edits.
+-- (sessions, see below), pages created (version_number = 1).
 --
 -- Edit-session collapse (issue #259):
 -- Confluence creates a new wiki_page_versions row on every save — autosaves,
@@ -18,6 +17,13 @@
 -- `total_edits` then counts distinct (page, session) pairs instead of raw
 -- versions. `pages_edited` and `pages_created` are unaffected by the bug
 -- and stay as before.
+--
+-- Dropped: `minor_edits` / `major_edits` (issue #260). The Confluence Cloud
+-- `/pages/{id}/versions` endpoint always returns `minorEdit: false` for all
+-- versions regardless of how the flag was set on PUT — verified empirically
+-- on 2026-05-05. The split conveys no information. The bronze field
+-- `wiki_page_versions.minor_edit` is preserved as-is for forward
+-- compatibility, but Silver ignores it.
 --
 -- Identity resolution: same pattern as confluence__wiki_pages — LEFT JOIN
 -- with bronze_jira.jira_user on accountId. Skipped at compile-time if Jira
@@ -47,7 +53,6 @@ WITH versions AS (
         page_id,
         author_id,
         toUInt32(coalesce(version_number, 0))                                AS version_number,
-        coalesce(minor_edit, false)                                          AS minor_edit,
         parseDateTime64BestEffortOrNull(coalesce(created_at, ''), 3)         AS created_at_ts,
         toDate(parseDateTime64BestEffortOrNull(coalesce(created_at, ''), 3)) AS day,
         parseDateTime64BestEffortOrNull(coalesce(collected_at, ''), 3)       AS collected_at,
@@ -104,8 +109,6 @@ agg AS (
         -- header comment for rationale.
         uniqExact((page_id, session_id))                                    AS total_edits,
         countIf(version_number = 1)                                         AS pages_created,
-        countIf(not minor_edit)                                             AS major_edits,
-        countIf(minor_edit)                                                 AS minor_edits,
         max(collected_at)                                                   AS collected_at_max,
         -- _version per group: latest bronze extraction. Changes only when new
         -- versions arrive for this (author, day), so downstream silver
@@ -143,8 +146,6 @@ SELECT
     toUInt32(a.pages_edited)                                                AS pages_edited,
     toUInt32(a.total_edits)                                                 AS total_edits,
     toUInt32(a.pages_created)                                               AS pages_created,
-    toUInt32(a.major_edits)                                                 AS major_edits,
-    toUInt32(a.minor_edits)                                                 AS minor_edits,
     'confluence'                                                            AS source,
     'insight_confluence'                                                    AS data_source,
     CAST(a.collected_at_max AS Nullable(DateTime64(3)))                     AS collected_at,
