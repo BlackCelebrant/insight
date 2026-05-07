@@ -227,7 +227,7 @@ A deploy is always initiated by a human at a workstation. Steps:
 2. **Inspect** — `git log --oneline origin/main ^HEAD@{upstream}` (run by `make diff`) shows the poller commits since the last deploy.
 3. **VPN check** — `make deploy ENV=dev` runs the cluster reachability probe before doing any work.
 4. **Diff** — the Makefile renders the chart with the current values (`helm template …`) and stores the rendered manifest under `.deploy/last-render-${ENV}.yaml`. The engineer can `diff` against the previous render to see what is changing on the cluster.
-5. **Apply** — `helm upgrade --install insight charts/insight -n insight -f environments/${ENV}/values.yaml`. The Makefile passes `--atomic --timeout 10m` so a failed deploy is rolled back automatically.
+5. **Apply** — `helm upgrade --install insight $CHART -n insight -f environments/${ENV}/values.yaml`, where `$CHART` resolves to either a sibling checkout of `cyberfabric/insight` (`../insight/charts/insight`, the MVP default) or an OCI reference (`oci://ghcr.io/cyberfabric/charts/insight` once chart releases are automated). The chart is **not** vendored into the gitops repo — see [§7](#7-repository-layout-target). The Makefile passes `--atomic --timeout 10m` so a failed deploy is rolled back automatically.
 6. **Verify** — `make status ENV=dev` runs `kubectl rollout status` for each deployment + `helm test` for smoke tests.
 
 For `stage` and `prod`:
@@ -341,7 +341,7 @@ A `Brewfile` at the repo root captures these dependencies; `make doctor` runs `b
 ENV         ?= dev
 NAMESPACE   ?= insight
 RELEASE     ?= insight
-CHART       ?= charts/insight
+CHART       ?= ../insight/charts/insight   # sibling checkout; or oci://… once published
 VALUES      ?= environments/$(ENV)/values.yaml
 KUBE_CTX    ?= insight-$(ENV)
 TIMEOUT     ?= 10m
@@ -478,8 +478,6 @@ infra/insight-gitops/
 ├── .poller.yaml                # service list consumed by scripts/poller.sh
 ├── .gitlab-ci.yml              # defines the image-poller scheduled job
 ├── .gitleaks.toml              # secret-scanning rules
-├── charts/
-│   └── insight/                # umbrella chart (vendored or submoduled from cyberfabric/insight)
 ├── environments/
 │   ├── dev/
 │   │   ├── values.yaml
@@ -506,7 +504,7 @@ Conventions:
 
 - One `values.yaml` per environment. No further per-service values files at this stage; the umbrella chart already exposes one flat values surface.
 - One `pub-cert.pem` per environment because each cluster runs its own sealed-secrets-controller with its own keypair.
-- `charts/insight/` is the same artifact as the public umbrella, vendored to a pinned chart version, so a deploy is reproducible without a network fetch (and because the chart-source-switch in the public installer expects either local or OCI — see [DESIGN.md §1.3](../specs/DESIGN.md)).
+- **The umbrella chart lives in `cyberfabric/insight`, not here.** The gitops repo is settings-only — values, sealed secrets, the Makefile, the poller. The Makefile's `$CHART` variable resolves to either a sibling checkout of `cyberfabric/insight` (`../insight/charts/insight`, the MVP default) or an OCI reference (once chart releases are automated, see [DESIGN.md §1.3](../specs/DESIGN.md)). Engineers run `helm dependency update` in the source repo, not here.
 
 ## 8. Open Items
 
