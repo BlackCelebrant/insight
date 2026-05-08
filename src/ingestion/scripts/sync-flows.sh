@@ -6,6 +6,12 @@ cd "$SCRIPT_DIR/.."
 
 # KUBECONFIG can be empty when running in-cluster
 
+# Host-side prerequisites — yq + envsubst on $PATH for the descriptor
+# read loop below. No port-forward needed (this script doesn't hit the
+# Airbyte API). See airbyte-toolkit/lib/host-side-prerequisites.sh.
+source "./airbyte-toolkit/lib/host-side-prerequisites.sh"
+ensure_tooling
+
 WORKFLOWS_DIR="./workflows"
 CONNECTORS_DIR="./connectors"
 CONNECTIONS_DIR="./connections"

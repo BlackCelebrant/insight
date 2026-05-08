@@ -112,9 +112,15 @@ These two state files use different key formats, different tenant naming convent
 ### 3.1 Module-Specific Environment Constraints
 
 - Requires `kubectl` with access to the cluster (for reading K8s Secrets).
-- Requires `python3` (3.10+) with `pyyaml` (available in toolbox image).
+- Requires `python3` (3.10+) with `pyyaml`, plus `yq` and `jq` for descriptor parsing.
+  Host invocations auto-install missing CLI tools into `~/.insight/bin` via
+  `lib/host-side-prerequisites.sh::ensure_tooling`; toolbox image ships
+  them pre-installed.
 - Requires `node` (for JWT minting via `crypto` module) or equivalent.
-- Airbyte API must be reachable (localhost via port-forward, or in-cluster service URL).
+- Airbyte API must be reachable. From host,
+  `lib/host-side-prerequisites.sh::ensure_airbyte_pf` opens a port-forward
+  to `airbyte-airbyte-server-svc:8001` with an EXIT trap; in-cluster runs
+  hit the service URL directly.
 
 ## 4. Scope
 
@@ -352,7 +358,8 @@ The toolkit **MUST** work both from the host machine (via kubectl + port-forward
 
 ## 11. Assumptions
 
-- Airbyte API is reachable (port-forwarded on host, or in-cluster via service URL).
+- Airbyte API is reachable (auto-port-forwarded on host via
+  `lib/host-side-prerequisites.sh`, or in-cluster via service URL).
 - K8s Secrets exist and are correctly labeled before toolkit commands run.
 - One Airbyte workspace per cluster (the default workspace created by Helm chart).
 - Tenant ID is currently a free-form string; will migrate to UUID. No format validation enforced now.

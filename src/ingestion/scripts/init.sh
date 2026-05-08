@@ -8,6 +8,16 @@ cd "$SCRIPT_DIR/.."
 
 export TOOLKIT_DIR="${SCRIPT_DIR}/../airbyte-toolkit"
 
+# Host prerequisites (no-op in-cluster). Installs yq/jq/PyYAML into
+# ~/.insight/bin and opens a kubectl port-forward to airbyte-server with
+# an EXIT trap. Lets `bash init.sh` work end-to-end from a fresh laptop
+# with only kubectl + a working KUBECONFIG. Toolkit subscripts also
+# call these helpers so `register.sh` / `connect.sh` / `sync-flows.sh`
+# work standalone too.
+# shellcheck source=../airbyte-toolkit/lib/host-side-prerequisites.sh
+source "${TOOLKIT_DIR}/lib/host-side-prerequisites.sh"
+ensure_tooling
+
 # Single-namespace umbrella (PR #224). All Insight components — including the
 # bundled ClickHouse StatefulSet — live in the release namespace, default
 # `insight`. Exported so child scripts (airbyte-toolkit/*.sh, sync-flows.sh)
@@ -74,6 +84,10 @@ done
 # migrations at startup (SeaORM Migrator::up). See ADR-0006.
 
 echo "=== Registering connectors ==="
+# register.sh / connect.sh both source lib/env.sh, which calls the Airbyte
+# REST API. From host that requires a port-forward; ensure_airbyte_pf
+# opens one and registers an EXIT trap. No-op when running in-cluster.
+ensure_airbyte_pf
 "${TOOLKIT_DIR}/register.sh" --all
 
 echo "=== Applying connections ==="
