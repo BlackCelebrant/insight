@@ -6,9 +6,11 @@ cd "$SCRIPT_DIR/.."
 
 # KUBECONFIG can be empty when running in-cluster
 
-# Host-side prerequisites — yq + envsubst on $PATH for the descriptor
-# read loop below. No port-forward needed (this script doesn't hit the
-# Airbyte API). See airbyte-toolkit/lib/host-side-prerequisites.sh.
+# Host-side prerequisites — `yq` (and `jq`/PyYAML, transitively) for the
+# descriptor read loop below. `envsubst` (gettext) is also used by the
+# template render but is assumed present on the host; no auto-install.
+# No port-forward needed — this script doesn't hit the Airbyte API.
+# See airbyte-toolkit/lib/host-side-prerequisites.sh.
 source "./airbyte-toolkit/lib/host-side-prerequisites.sh"
 ensure_tooling
 

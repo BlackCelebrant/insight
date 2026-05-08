@@ -5,14 +5,21 @@
 # UNKNOWN_TABLE / UNKNOWN_DATABASE and init.sh aborts.
 #
 # Two classes of placeholders:
-#   1. bronze_<source>.<stream>  — populated by Airbyte connectors. Missing
-#                                  on first install; Airbyte drops the
-#                                  placeholder and recreates with its own
-#                                  schema on the first sync.
+#   1. bronze_<source>.<stream>  — populated by Airbyte connectors. The
+#                                  placeholder ships the four CDK v2
+#                                  internal columns (see ADR-0007 rule 3),
+#                                  so Airbyte's destination v2 accepts it
+#                                  via `ensureSchemaMatches` and writes to
+#                                  it in place on the first sync (rule 5).
 #   2. silver.<dbt_model>        — built by `dbt run` (Argo workflow,
 #                                  invoked AFTER init.sh registers it).
-#                                  dbt drops the placeholder and creates a
-#                                  ReplacingMergeTree on its first run.
+#                                  Each silver placeholder carries the
+#                                  marker comment INSIGHT_PLACEHOLDER_v1;
+#                                  the dbt on-run-start hook
+#                                  `drop_silver_placeholders_at_start`
+#                                  drops it on the first eligible run so
+#                                  the model materialises with its real
+#                                  schema (ADR-0007 rule 5).
 #
 # This is THE EXISTING WORKAROUND for an architectural issue: gold-view
 # migrations run before dbt builds silver. The proper fix is either to

@@ -68,6 +68,26 @@ Rules for the placeholder:
    _airbyte_generation_id UInt32        DEFAULT 0
    ```
 
+   The four types must match what the Airbyte CH destination v2 emits
+   when it creates the table itself, and that contract has shifted
+   between minor versions:
+
+   - **`destination-clickhouse:2.0.x`** (our currently-pinned image,
+     released 2025-07) emits `_airbyte_generation_id` as `UInt32`.
+     Verified by inspecting tables Airbyte creates from scratch (e.g.
+     `bronze_cursor.cursor_daily_usage` after dropping any placeholder,
+     letting Airbyte create from scratch).
+   - **`destination-clickhouse:2.1.0+`** (released 2025-09 via PR
+     #65144 "Migrate to dataflow model") refactored schema generation
+     through `ClickhouseTableSchemaMapper`, which maps the CDK
+     `IntegerType` to `Int64`. So 2.1+ emits `_airbyte_generation_id`
+     as `Int64`.
+
+   The placeholder MUST track the destination's emit type. When
+   bumping the Airbyte chart past 2.1.0, this placeholder column type
+   must change to `Int64` in the same PR — otherwise
+   `ensureSchemaMatches` will reject the placeholder on first sync.
+
    The Airbyte ClickHouse destination v2 calls
    `ensureSchemaMatches` at the start of every sync and refuses to
    write to a table whose schema is missing those four columns

@@ -100,10 +100,14 @@ _install_jq() {
 _install_pyyaml() {
   echo "  Installing PyYAML via pip" >&2
   # --user keeps the install out of the system site-packages; works with
-  # the venv-less interpreter on most operator workstations. Fall back to
-  # plain pip install if --user is rejected (some Pythons forbid it).
+  # the venv-less interpreter on most operator workstations. Three-step
+  # fallback: --user, then plain, then --break-system-packages — the
+  # last covers PEP 668 "externally-managed-environment" interpreters
+  # (Debian 12+, Ubuntu 23.04+, Homebrew Python 3.12+) where the first
+  # two raise an actionable-but-blocking error.
   python3 -m pip install --user --quiet pyyaml \
-    || python3 -m pip install --quiet pyyaml
+    || python3 -m pip install --quiet pyyaml \
+    || python3 -m pip install --user --quiet --break-system-packages pyyaml
 }
 
 # ---------------------------------------------------------------------------
@@ -169,14 +173,17 @@ ensure_airbyte_pf() {
     >/dev/null 2>&1 &
   local pf_pid=$!
   # Trap EXIT (covers normal exit, set -e abort, signal). Use a defensive
-  # kill — process may have already died if PF errored out.
+  # kill — process may have already died if PF errored out. Chain to any
+  # existing EXIT trap so callers' cleanup isn't clobbered (e.g. the
+  # sourcing script may install its own trap before or after this call).
+  local prev_trap
+  prev_trap=$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/")
   # shellcheck disable=SC2064
-  trap "kill $pf_pid 2>/dev/null || true" EXIT
+  trap "kill $pf_pid 2>/dev/null || true; ${prev_trap}" EXIT
 
   # Wait for the forward to become ready. 30s ceiling avoids hangs when
   # the service is missing or the API server is itself unhealthy.
-  local i
-  for i in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     if curl -sf -o /dev/null --max-time 2 "${api}/api/v1/health" 2>/dev/null; then
       return 0
     fi
