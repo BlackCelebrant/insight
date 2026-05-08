@@ -15,6 +15,13 @@ INGESTION_DIR="$(cd "$TOOLKIT_DIR/.." && pwd)"
 
 CONNECTORS_DIR="${INGESTION_DIR}/connectors"
 
+# Host-side prerequisites must come before env.sh — env.sh hits the
+# Airbyte REST API to resolve WORKSPACE_ID and yq is needed for descriptor
+# parsing below. See lib/host-side-prerequisites.sh.
+source "${TOOLKIT_DIR}/lib/host-side-prerequisites.sh"
+ensure_tooling
+ensure_airbyte_pf
+
 source "${TOOLKIT_DIR}/lib/env.sh"
 source "${TOOLKIT_DIR}/lib/state.sh"
 

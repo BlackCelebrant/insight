@@ -16,6 +16,13 @@ INGESTION_DIR="$(cd "$TOOLKIT_DIR/.." && pwd)"
 CONNECTIONS_DIR="${INGESTION_DIR}/connections"
 CONNECTORS_DIR="${INGESTION_DIR}/connectors"
 
+# Host-side prerequisites must come before env.sh — env.sh hits the
+# Airbyte REST API to resolve WORKSPACE_ID and the inline Python below
+# needs PyYAML. See lib/host-side-prerequisites.sh.
+source "${TOOLKIT_DIR}/lib/host-side-prerequisites.sh"
+ensure_tooling
+ensure_airbyte_pf
+
 source "${TOOLKIT_DIR}/lib/env.sh"
 source "${TOOLKIT_DIR}/lib/state.sh"
 
@@ -85,6 +92,32 @@ def state_pop(data, dotpath):
         d.pop(keys[-1], None)
 
 state = load_state()
+
+# ---------------------------------------------------------------------------
+# Workspace-change self-heal
+#
+# Every source/destination/connection ID we have cached is scoped to a
+# specific Airbyte workspace UUID. If the workspace was recreated between
+# runs (cluster wipe, Airbyte reinstall, fresh `helm install` over a
+# different airbyte-db PV), every cached ID is stale by definition. The
+# downstream "verify-then-recreate" loops below DO catch this for sources
+# and destinations individually, but they 404 when they try to delete a
+# stale connection that itself is gone — `connections/delete` raises an
+# unhandled ApiError. Cheaper and more correct: detect the workspace
+# rotation up front and drop the entire `tenants` block once. The state
+# file gets repopulated below as we recreate everything in the new
+# workspace; this just avoids carrying ghost references forward.
+# ---------------------------------------------------------------------------
+_prev_workspace = state.get("workspace_id")
+if _prev_workspace and _prev_workspace != workspace_id:
+    print(
+        f"  Workspace changed ({_prev_workspace} -> {workspace_id}); "
+        f"resetting cached tenants section",
+        file=sys.stderr,
+    )
+    state.pop("tenants", None)
+    state["workspace_id"] = workspace_id
+    save_state(state)
 
 # ---------------------------------------------------------------------------
 # Required cluster context (single-namespace model — operator must export)
@@ -424,10 +457,18 @@ for connector_name, source_id_label, config in connector_instances:
         existing = api_get("/api/v1/sources/get", {"sourceId": source_id})
         if not existing or "sourceId" not in existing:
             print(f"    Source {source_id} gone from Airbyte, recreating...")
-            # Also delete stale connection
+            # Also delete stale connection. The connection may already be gone
+            # too (Airbyte cascades source deletion to its connections), in
+            # which case `connections/delete` returns 404. Tolerate that —
+            # we're trying to converge to "no connection here", which is what
+            # 404 already means.
             old_conn = state_get(state, f"{tenant_connector_path}.connection_id")
             if old_conn:
-                api("POST", "/api/v1/connections/delete", {"connectionId": old_conn})
+                try:
+                    api("POST", "/api/v1/connections/delete", {"connectionId": old_conn})
+                except ApiError as e:
+                    if e.code != 404:
+                        raise
             source_id = None
             # Clear stale IDs from state
             state_pop(state, f"{tenant_connector_path}.source_id")
