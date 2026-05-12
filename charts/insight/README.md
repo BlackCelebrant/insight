@@ -17,9 +17,10 @@ Single canonical unit of delivery for the Insight platform.
 | API Gateway           | app service (req'd)  | `src/backend/services/api-gateway/helm`      | mandatory (no flag)             |
 | Analytics API         | app service (req'd)  | `src/backend/services/analytics-api/helm`    | mandatory (no flag)             |
 | Frontend (SPA)        | app service (req'd)  | `src/frontend/helm`                          | mandatory (no flag)             |
-| Identity Resolution   | app service (opt)    | `src/backend/services/identity/helm`         | `identityResolution.deploy`     |
+| Identity (.NET 9)     | app service (opt)    | `src/backend/services/identity/helm`         | `identity.deploy`               |
+| Identity (Rust, LEGACY) | app service (opt)  | `src/backend/services/identity-old/helm`     | `identityResolution.deploy`     |
 
-> Identity Resolution is a C# stub that requires populated bronze data; it is **not** an OIDC provider. Off by default.
+> Identity Resolution requires a populated `persons` table (seeded by `src/backend/services/identity/seed/seed-persons.sh`). The .NET service under `identity.deploy=true` is canonical going forward; the legacy Rust subchart is retained until the cleanup PR removes it. Neither is an OIDC provider. Both off by default.
 
 ## What it does NOT contain
 

@@ -523,7 +523,8 @@ Developers iterate faster when the platform bring-up is one command. The wrapper
 |-------------------|----------------|---------|
 | `src/backend/services/api-gateway/helm` | Helm subchart | Mandatory app service shipped under `apiGateway` alias. |
 | `src/backend/services/analytics-api/helm` | Helm subchart | Mandatory app service shipped under `analyticsApi` alias. |
-| `src/backend/services/identity/helm` | Helm subchart | Optional identity-resolution stub under `identityResolution` alias. |
+| `src/backend/services/identity/helm` | Helm subchart | Optional .NET 9 identity service under `identity` alias. Canonical persons-store API. |
+| `src/backend/services/identity-old/helm` | Helm subchart | Optional legacy Rust identity-resolution stub under `identityResolution` alias. Retired (deploy=false default); retained until the follow-up cleanup PR. |
 | `src/frontend/helm` | Helm subchart | Mandatory SPA shipped under `frontend` alias. |
 | `helmfile/charts/clickhouse` | Helm subchart (local wrapper) | ClickHouse OLAP store. |
 | `charts/insight/templates/ingestion/*.yaml` | First-class Helm templates | Ingestion WorkflowTemplate sources, gated by `ingestion.templates.enabled`; consume umbrella helpers directly via `include`. |

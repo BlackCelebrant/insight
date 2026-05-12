@@ -722,7 +722,7 @@ Identity-attribute observation history for persons, stored in MariaDB. Each row 
 
 **Database**: MariaDB, database `identity` — dedicated to identity-resolution-domain tables, reached via the service's `database_url` configuration. The service does not assume co-location with any other MariaDB database; any other service owning MariaDB tables configures its own connection independently. Each backend service owns and applies its own schema — see [ADR-0006](../../ingestion/specs/ADR/0006-service-owned-migrations.md).
 
-**DDL**: `src/backend/services/identity/src/migration/m20260421_000001_persons.rs` (SeaORM migration, raw SQL body)
+**DDL**: `src/backend/services/identity-old/src/migration/m20260421_000001_persons.rs` (SeaORM migration, raw SQL body)
 
 ##### Columns
 
@@ -789,7 +789,7 @@ Row 120 supersedes row 5 as the current `display_name` for person `p-1001` (late
 
 **SCD2 materialized cache** of the source-account → `person_id` binding, derived deterministically from `persons` rows where `value_type='id'`. Never the source of truth; rebuilt from scratch at the end of every seed run (and by future operator flows). Exists purely for fast lookup and temporal "as of date T" queries — equivalent to a window-function scan over `persons.value_type='id'`, but O(1)–O(rows-in-tenant) instead of O(observations-in-tenant).
 
-**Database**: MariaDB, database `identity` (same as `persons`). Defined in the same SeaORM migration: `src/backend/services/identity/src/migration/m20260421_000001_persons.rs`.
+**Database**: MariaDB, database `identity` (same as `persons`). Defined in the same SeaORM migration: `src/backend/services/identity-old/src/migration/m20260421_000001_persons.rs`.
 
 ##### Columns
 
@@ -864,7 +864,7 @@ See ADR-0002 for the full decision record (why a derived cache instead of a seco
 
 **Schema ownership**: the `persons` table DDL lives inside the
 identity-resolution Rust service at
-`src/backend/services/identity/src/migration/m20260421_000001_persons.rs`
+`src/backend/services/identity-old/src/migration/m20260421_000001_persons.rs`
 and is applied by the service's own SeaORM `Migrator` at startup
 (a helm `initContainer` also runs `identity-resolution migrate`
 before the main container starts). See

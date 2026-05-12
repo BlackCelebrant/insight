@@ -806,7 +806,7 @@ migrations inside the service codebase and applies them at startup.
   `seaql_migrations` in the database referenced by
   `mariadb.database` (umbrella chart, default `insight`).
 - **identity-resolution**: SeaORM `Migrator` at
-  `src/backend/services/identity/src/migration/`; tracker table
+  `src/backend/services/identity-old/src/migration/`; tracker table
   `seaql_migrations` in the database referenced by
   `identityResolution.databaseName` (umbrella chart, default `identity`).
 - **Future backend services**: follow the same pattern — own

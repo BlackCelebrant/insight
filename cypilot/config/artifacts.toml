@@ -545,6 +545,63 @@ path = "src/backend/services/analytics-api/specs/DESIGN.md"
 name = "Analytics API Design"
 traceability = "DOCS-ONLY"
 
+[[systems.artifacts]]
+kind = "PRD"
+path = "docs/components/backend/identity-resolution/identity/specs/PRD.md"
+name = "Identity Resolution PRD"
+traceability = "DOCS-ONLY"
+
+[[systems.artifacts]]
+kind = "DESIGN"
+path = "docs/components/backend/identity-resolution/identity/specs/DESIGN.md"
+name = "Identity Resolution Design"
+traceability = "DOCS-ONLY"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0001-dotnet-replaces-rust-stub.md"
+name = "ADR-0001: .NET 9 Service Replaces the Rust Identity-Resolution Stub"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0002-read-from-mariadb-persons.md"
+name = "ADR-0002: Read From the MariaDB persons Table"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0003-latest-per-source-semantics.md"
+name = "ADR-0003: Latest-Per-Source Lookup Semantics"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0004-lowercase-email-lookup.md"
+name = "ADR-0004: Lowercase Emails on Storage and Lookup"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0005-tenant-context-strategy.md"
+name = "ADR-0005: Composite Tenant Context With JWT Stub"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0006-display-name-split-fallback.md"
+name = "ADR-0006: Display-Name Split Fallback for First/Last Name"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0007-value-type-routing.md"
+name = "ADR-0007: value_type Routing for Identity Reads"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0008-bamboohr-identity-inputs-extension.md"
+name = "ADR-0008: Extend BambooHR identity_inputs With Person Attributes"
+
+[[systems.artifacts]]
+kind = "ADR"
+path = "docs/components/backend/identity-resolution/identity/specs/ADR/0009-cut-over-rename-and-retire.md"
+name = "ADR-0009: Cut-Over Rename and Retire the Rust Stub"
+
 [[systems]]
 name = "Orchestrator"
 slug = "orch"

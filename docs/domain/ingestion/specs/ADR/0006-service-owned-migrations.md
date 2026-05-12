@@ -65,9 +65,9 @@ MariaDB tables, or to introduce a separate mechanism alongside it.
 
 - `identity-resolution` service owns the MariaDB database `identity`.
 - Schema defined in
-  `src/backend/services/identity/src/migration/m20260421_000001_persons.rs`.
+  `src/backend/services/identity-old/src/migration/m20260421_000001_persons.rs`.
 - Migrator registered in
-  `src/backend/services/identity/src/migration/mod.rs`.
+  `src/backend/services/identity-old/src/migration/mod.rs`.
 - Applied on every pod startup via `run_migrations(&db)` in
   `src/main.rs` (idempotent — sea-orm tracks applied migrations in
   `seaql_migrations` inside the service's own database). The
@@ -115,7 +115,7 @@ MariaDB tables, or to introduce a separate mechanism alongside it.
 
 - `docs/components/backend/specs/ADR/` (analytics-api Migrator is
   the source pattern this ADR generalises).
-- `src/backend/services/identity/src/migration/` — first service-
+- `src/backend/services/identity-old/src/migration/` — first service-
   owned migration set under this policy.
 - `docs/domain/identity-resolution/specs/ADR/0002-stable-person-id-via-persons-observations.md`
   — seed contract, unchanged by this ADR (seed stays one-shot, not

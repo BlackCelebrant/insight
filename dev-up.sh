@@ -95,6 +95,14 @@ OIDC_CLIENT_ID="${OIDC_CLIENT_ID:-}"
 OIDC_REDIRECT_URI="${OIDC_REDIRECT_URI:-}"
 OIDC_AUDIENCE="${OIDC_AUDIENCE:-}"
 
+# Identity-service default tenant for header-less callers. Each developer's
+# MariaDB has rows under a specific `insight_tenant_id` — pin it here so
+# `GET /v1/persons/{email}` works without sending `X-Insight-Tenant-Id`.
+# Empty = identity requires the header on every request (prod mode).
+# Back-compat: the older `IDENTITY_CSHARP_TENANT_DEFAULT_ID` name is still
+# honoured so existing .env.local files keep working through the migration.
+IDENTITY_TENANT_DEFAULT_ID="${IDENTITY_TENANT_DEFAULT_ID:-${IDENTITY_CSHARP_TENANT_DEFAULT_ID:-}}"
+
 # ─── Sanity ───────────────────────────────────────────────────────────────
 if [[ "$AUTH_DISABLED" != "true" && -z "$OIDC_EXISTING_SECRET" ]]; then
   : "${OIDC_ISSUER:?ERROR: OIDC_ISSUER is required — set it in $ENV_FILE or use OIDC_EXISTING_SECRET}"
@@ -256,7 +264,11 @@ build_and_load_image() {
 if [[ "$COMPONENT" != "ingestion" ]]; then
   echo "=== Building backend images ==="
   build_and_load_image analytics-api src/backend/services/analytics-api/Dockerfile
-  build_and_load_image identity      src/backend/services/identity/Dockerfile
+  # `identity` is now the .NET 9 service. The Dockerfile uses its OWN
+  # build context (the service folder), unlike the Rust services which
+  # share `src/backend/` as context.  The retired Rust stub lives in
+  # `src/backend/services/identity-old/` and is no longer built here.
+  build_and_load_image identity      src/backend/services/identity/Dockerfile src/backend/services/identity/
   build_and_load_image api-gateway   src/backend/services/api-gateway/Dockerfile
 
   # Frontend — prefer a local build from the neighbouring insight-front
@@ -342,6 +354,8 @@ DEV_VALUES=$(mktemp)
 trap 'rm -f "$DEV_VALUES"' EXIT
 
 ANALYTICS_IMG=$(image_ref analytics-api)
+# `identity` image is the .NET service (legacy Rust stub retired —
+# build_and_load_image identity above points at the C# Dockerfile).
 IDENTITY_IMG=$(image_ref identity)
 GATEWAY_IMG=$(image_ref api-gateway)
 
@@ -376,11 +390,12 @@ analyticsApi:
     repository: "${AN_REPO}"
     tag: "${AN_TAG_VAL}"
     pullPolicy: "${IMAGE_PULL_POLICY}"
-identityResolution:
+identity:
   image:
     repository: "${ID_REPO}"
     tag: "${ID_TAG_VAL}"
     pullPolicy: "${IMAGE_PULL_POLICY}"
+  tenantDefaultId: "${IDENTITY_TENANT_DEFAULT_ID}"
 frontend:
   image:
     # Frontend image is built from local source by build_and_load_frontend()
