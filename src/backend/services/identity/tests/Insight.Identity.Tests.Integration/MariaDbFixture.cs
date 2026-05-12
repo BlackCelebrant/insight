@@ -11,8 +11,7 @@ namespace Insight.Identity.Tests.Integration;
 /// </summary>
 public sealed class MariaDbFixture : IAsyncLifetime
 {
-    private readonly MariaDbContainer _container = new MariaDbBuilder()
-        .WithImage("mariadb:11.4")
+    private readonly MariaDbContainer _container = new MariaDbBuilder("mariadb:11.4")
         .WithDatabase("identity")
         .WithUsername("insight")
         .WithPassword("insight-pass")

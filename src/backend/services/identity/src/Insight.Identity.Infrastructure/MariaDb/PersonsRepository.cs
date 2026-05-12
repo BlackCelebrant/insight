@@ -70,6 +70,11 @@ public sealed class PersonsRepository : IPersonsReader
         await using var conn = await _factory.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var cmd = new MySqlCommand(Sql.DirectSubordinateIds, conn);
         cmd.Parameters.AddWithValue("@tenant_id", tenantId.ToByteArray(bigEndian: true));
+        // `parent_person_id` is intentionally stored as a 36-char string in
+        // `persons.value_id` (VARCHAR(320) COLLATE utf8mb4_bin) — see
+        // ADR-0007. The reconciliation service writes it via the same
+        // textual representation. NOT BINARY(16) like the other UUID
+        // columns; do not "fix" this to ToByteArray.
         cmd.Parameters.AddWithValue("@parent_person_id", parentPersonId.ToString("D"));
 
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);

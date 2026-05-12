@@ -21,7 +21,7 @@ Application services (always-on):
 {{- if .Values.identity.deploy }}
   ✓ Identity           http://{{ include "insight.identity.host" . }}:8082  (deployed)
 {{- else }}
-  · Identity           not deployed (requires populated `persons`; enable via identity.deploy=true)
+  · Identity           not deployed (requires a populated `persons` table; enable via identity.deploy=true)
 {{- end }}
 {{- if .Values.identityResolution.deploy }}
   ⚠ Identity Res.      http://{{ include "insight.identityResolution.host" . }}:8082  (RETIRED Rust stub still deployed — migrate to `identity`)

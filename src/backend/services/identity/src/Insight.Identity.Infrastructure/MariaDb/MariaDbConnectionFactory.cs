@@ -100,8 +100,10 @@ public sealed partial class MariaDbConnectionFactory
         var match = UrlRegex().Match(url);
         if (!match.Success)
         {
+            // Don't echo the raw url — it can contain user:pass that
+            // would otherwise leak into operator logs / exception output.
             throw new ArgumentException(
-                $"mariadb.url must match 'mysql://[user[:pass]@]host[:port]/db'; got '{url}'");
+                "mariadb.url must match 'mysql://[user[:pass]@]host[:port]/db'");
         }
 
         var port = match.Groups["port"].Success

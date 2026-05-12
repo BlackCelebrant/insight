@@ -19,6 +19,7 @@ internal static class Sql
         WITH ranked AS (
             SELECT
                 person_id,
+                id,
                 ROW_NUMBER() OVER (
                     PARTITION BY insight_tenant_id, insight_source_type, insight_source_id, value_type, value_id
                     ORDER BY created_at DESC, id DESC
@@ -32,7 +33,7 @@ internal static class Sql
         SELECT person_id
         FROM ranked
         WHERE rn = 1
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
         """;
 

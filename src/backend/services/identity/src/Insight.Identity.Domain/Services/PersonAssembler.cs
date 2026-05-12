@@ -46,7 +46,10 @@ public static class PersonAssembler
         var firstName = latest.GetValueOrDefault(ValueTypes.FirstName, string.Empty);
         var lastName = latest.GetValueOrDefault(ValueTypes.LastName, string.Empty);
 
-        if (string.IsNullOrEmpty(firstName) && string.IsNullOrEmpty(lastName)
+        // Whitespace-only first/last counts as missing too — fall back
+        // to the display-name split so observations like
+        // `first_name = "   "` don't silently win.
+        if (string.IsNullOrWhiteSpace(firstName) && string.IsNullOrWhiteSpace(lastName)
             && !string.IsNullOrWhiteSpace(displayName))
         {
             (firstName, lastName) = DisplayNameSplitter.Split(displayName);

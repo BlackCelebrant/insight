@@ -93,7 +93,7 @@ consumer that queries it directly.
 |---|---|
 | NFR-1 | P95 lookup latency under 50 ms for tenants with under 50k persons (single-row cardinality on a covered index). |
 | NFR-2 | Process memory under 384 Mi at steady state; no in-memory full-table cache. |
-| NFR-3 | Logs in structured JSON via Serilog (compact format) with `service=identity` and the full request log. |
+| NFR-3 | Logs are structured JSON via Serilog `CompactJsonFormatter` with the enricher `service=identity`. Request-logging middleware records an allow-listed property set per request (`RequestMethod`, `RequestPath` template, `StatusCode`, `Elapsed`, `RequestId`, `ConnectionId`, `@tr`/`@sp` trace+span IDs) — never the raw email path segment or any other PII. Unhandled-exception payloads include exception type + message + the sanitised `db_target` (`host:port/db`, no credentials) and never the connection string. |
 | NFR-4 | All UUIDs round-trip as `BINARY(16)` to MariaDB to avoid the 36-char-string truncation bug captured in the Python seeder. |
 
 ## 6. Use Cases

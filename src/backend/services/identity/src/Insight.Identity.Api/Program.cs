@@ -70,7 +70,24 @@ builder.WebHost.UseUrls($"http://{bindAddr}");
 
 var app = builder.Build();
 
-app.UseSerilogRequestLogging();
+// Request-logging redaction (PRD NFR-3). The default
+// `UseSerilogRequestLogging` enricher captures `RequestPath` as the raw
+// URL, which for `/v1/persons/{email}` would expose the email — PII.
+// Override the property with a redacted form so logs never carry the
+// caller's email address.
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        var path = httpContext.Request.Path.Value ?? string.Empty;
+        if (path.StartsWith("/v1/persons/", StringComparison.OrdinalIgnoreCase))
+        {
+            path = "/v1/persons/<redacted>";
+        }
+        diagnosticContext.Set("RequestPath", path);
+    };
+});
+
 app.UseExceptionHandler(handler =>
 {
     handler.Run(async context =>
@@ -79,8 +96,12 @@ app.UseExceptionHandler(handler =>
         var ex = feature?.Error;
         var logger = context.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("Insight.Identity.Api.UnhandledException");
+        // Log the route TEMPLATE, not the raw path (`/v1/persons/<email>`)
+        // — see PRD NFR-3.
+        var routeTemplate = (context.GetEndpoint() as Microsoft.AspNetCore.Routing.RouteEndpoint)?.RoutePattern.RawText
+            ?? "<unmatched>";
 #pragma warning disable CA1848 // single-call low-frequency error path; LoggerMessage adds noise here
-        logger.LogError(ex, "Unhandled exception in {Path}", context.Request.Path);
+        logger.LogError(ex, "Unhandled exception in {Route}", routeTemplate);
 #pragma warning restore CA1848
 
         var dbTarget = context.RequestServices.GetService<MariaDbConnectionFactory>()?.Target ?? "unknown";
