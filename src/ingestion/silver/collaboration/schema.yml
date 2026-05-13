@@ -2,7 +2,59 @@ version: 2
 
 models:
   - name: class_collab_chat_activity
-    description: "Unified daily chat activity per user from all collaboration sources (M365 Teams, Slack)"
+    description: >
+      Unified daily chat activity per user from all collaboration sources
+      (M365 Teams, Slack).
+
+      ## Aggregation guidance for Gold / analytics consumers
+
+      The chat-count columns are NOT independent — several of them are
+      subsets or supersets of others. Summing the wrong pair will
+      double-count. Pick ONE of the following families per metric and
+      stick with it:
+
+      **Family A — "total engagement" (recommended for headline KPIs):**
+      `total_chat_messages` only.
+      • This is the broadest signal each vendor exposes. Treat as
+        "chat engagement", not as a precise message count — semantics
+        differ across vendors (see the column description). Do NOT add
+        any other chat-* column on top — that double-counts.
+
+      **Family B — "non-channel chat" (DM-style activity):**
+      `direct_and_group_messages` only.
+      • The vendor-honest residual: everything posted outside channels.
+        Use when you want to isolate "personal/conversational" activity
+        from broadcast/channel posting. Do NOT also add
+        `direct_messages` or `group_chat_messages` — they are subsets
+        of this column (for the vendor that populates them).
+
+      **Family C — "channel-only activity":**
+      `channel_posts` (+ `channel_replies` for m365 only).
+      • Use when you specifically want channel/broadcast activity.
+        m365 separates posts from replies; Slack folds both into
+        `channel_posts`. Cross-vendor sums of `channel_posts` are
+        defensible but not identical (Slack value is broader by
+        replies).
+
+      **Identity:** roughly,
+        `total_chat_messages ≈ direct_and_group_messages + channel_posts (+ channel_replies for m365)`.
+      The "≈" is because m365's `total_chat_messages` formula uses
+      `teamChatMessageCount` rather than `postMessages` for the channel
+      half, and the two are not strictly equal (see
+      `m365__collab_chat_activity.sql` header).
+
+      **Do not mix families.**
+      • `total_chat_messages + direct_and_group_messages` — double-counts the DM half.
+      • `total_chat_messages + channel_posts` — double-counts the channel half.
+      • `direct_and_group_messages + direct_messages` — double-counts (for Slack `direct_messages` is NULL anyway; for m365 `direct_messages = direct_and_group_messages` because group is unsurfaced).
+      • `direct_messages + group_chat_messages` — both are NULL (m365) or one is NULL (Slack). Use `direct_and_group_messages`.
+
+      **Cross-vendor warning:** the m365 contribution to
+      `direct_and_group_messages` is a strict subset (1:1 DMs only —
+      group chats unsurfaced by Microsoft). A SUM across both
+      `data_source` values systematically under-counts Teams users
+      who chat heavily in group DMs. Document that caveat in any
+      cross-vendor Gold metric.
     columns:
       - name: tenant_id
         description: "Tenant isolation field"
