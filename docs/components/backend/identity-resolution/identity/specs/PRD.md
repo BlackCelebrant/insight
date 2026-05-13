@@ -17,8 +17,9 @@
   - [4.2 Out of Scope](#42-out-of-scope)
 - [5. Functional Requirements](#5-functional-requirements)
   - [5.1 Lookup contract](#51-lookup-contract)
-  - [5.2 Routing and normalisation](#52-routing-and-normalisation)
-  - [5.3 Schema lifecycle](#53-schema-lifecycle)
+  - [5.2 Profile lookup (POST /v1/profiles, Phase 2 — #347)](#52-profile-lookup-post-v1profiles-phase-2--347)
+  - [5.3 Routing and normalisation](#53-routing-and-normalisation)
+  - [5.4 Schema lifecycle](#54-schema-lifecycle)
 - [6. Non-Functional Requirements](#6-non-functional-requirements)
   - [6.1 NFR Inclusions](#61-nfr-inclusions)
   - [6.2 NFR Exclusions](#62-nfr-exclusions)
@@ -181,13 +182,21 @@ visible row is well-formed per the routing rules in ADR-0007.
 
 ### 4.1 In Scope
 
-- `GET /v1/persons/{email}` returning a single `PersonResponse` with
-  parent attributes (`parent_email`, `parent_id`, `parent_person_id`)
-  but no recursive subordinate expansion.
+- `GET /v1/persons/{email}` (Phase 1) returning a single
+  `PersonResponse` with parent attributes (`parent_email`,
+  `parent_id`, `parent_person_id`) but no recursive subordinate
+  expansion. Preserved unchanged by Phase 2.
+- `POST /v1/profiles` (Phase 2, cyberfabric/cyber-insight#347)
+  — single-profile lookup by either email (across all sources) or
+  source-native id (within one source instance), returning a
+  `ProfileResponse` with the full `ids[]` list of current
+  `value_type='id'` bindings. Single-result invariant enforced;
+  multiple matches surface as `422 urn:insight:error:ambiguous_profile`.
 - `GET /health` — DB ping (200 if reachable, 503 otherwise).
 - `GET /healthz` — process liveness (200 `text/plain "ok"`).
 - Tenant resolution by `X-Insight-Tenant-Id` header with optional
   fallback to `IDENTITY__identity__tenant_default_id` config.
+  Same `CompositeTenantContext` used by both endpoints.
 - Lowercase-email lookup against `value_type = 'email'`.
 - Display-name split fallback when explicit `first_name` /
   `last_name` observations are absent.
@@ -196,11 +205,17 @@ visible row is well-formed per the routing rules in ADR-0007.
 
 ### 4.2 Out of Scope
 
-- Recursive subordinate expansion via `parent_person_id` (Phase 2).
-- Real JWT-claim validation (Phase 2 — `JwtTenantContext` is wired in
-  DI as a stub, returns `null`).
-- Multi-result return shape with id-type filtering (Phase 2).
-- Temporal "as-of" queries by date range (Phase 3).
+- Recursive subordinate expansion via `parent_person_id` —
+  cyberfabric/cyber-insight#348 (GET subchart) lands separately.
+- Real JWT-claim validation (Phase 2.5 — `JwtTenantContext` is wired
+  in DI as a stub, returns `null`; api-gateway BFF forwarding lands
+  this).
+- Batch (multi-lookup) profile resolution — Phase 2 surfaces a single
+  lookup per request; multi-lookup body shape is a possible Phase 3
+  extension.
+- Temporal "as-of" queries by date range — Phase 3.
+- Write path (`POST /v1/resolve` golden-record bootstrap) —
+  cyberfabric/cyber-insight#349.
 - Writing observations into `persons` (owned by the seed pipeline
   and a future reconciliation service).
 - Merge / split workflows on person identities.
@@ -290,7 +305,106 @@ unblocks them without coupling to the reconciliation service.
 
 **Actors**: `cpt-insightspec-actor-api-gateway`
 
-### 5.2 Routing and normalisation
+### 5.2 Profile lookup (POST /v1/profiles, Phase 2 — #347)
+
+#### Resolve profile by email or source-native id
+
+- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-profile-resolve`
+
+The system **MUST** expose `POST /v1/profiles` accepting a JSON body
+of shape `{ value_type, value, insight_source_type?, insight_source_id? }`
+and returning a single `ProfileResponse` when exactly one current
+observation matches.
+
+The contract has two valid request shapes:
+- `value_type='email'` — `value` is the email to look up across ALL
+  source instances for the tenant. `insight_source_type` and
+  `insight_source_id` **MUST** be absent.
+- `value_type='id'` — `value` is the source-native account id from a
+  `persons.value_type='id'` observation. Both `insight_source_type`
+  and `insight_source_id` **MUST** be supplied.
+
+The handler resolves over the canonical latest-per-source-instance
+partition `(insight_tenant_id, person_id, insight_source_type,
+insight_source_id, value_type)`; observations superseded by a newer
+row on the same partition do not contribute.
+
+**Rationale**: Phase 1 GET endpoint is limited to email lookup; the
+analytics front-end and internal workflows need to resolve by other
+identifier types (source-native id especially for the
+person-by-source workflows in cyberfabric/cyber-insight#344). POST
+with a structured body keeps the contract extensible for Phase 3
+date-range filtering without further URL gymnastics.
+
+**Actors**: `cpt-insightspec-actor-api-gateway`,
+`cpt-insightspec-actor-identity-argo`
+
+#### Surface single-result invariant via 422
+
+- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-profile-ambiguous-422`
+
+When `POST /v1/profiles` matches more than one distinct `person_id`
+on the same lookup, the system **MUST** return `422 Unprocessable
+Entity` with an RFC 7807 body of type
+`urn:insight:error:ambiguous_profile`. The body **MUST** echo the
+offending lookup verbatim and include the list of matched
+`person_ids` so the caller can investigate the data invariant
+violation without re-querying.
+
+**Rationale**: The data invariant is "exactly one current person
+per source-instance id, and exactly one current person per email
+across all sources for a tenant". A violation indicates a corrupted
+`persons` table state; silently picking one record would mask the
+problem and risk wrong-person responses. 422 (RFC 9110 §15.5.21
+"semantically correct request, server cannot process due to
+data state") matches the cyberfabric platform convention used by
+analytics-api for similar invariant breaches.
+
+**Actors**: `cpt-insightspec-actor-platform-sre`
+
+#### Project full alias list on response
+
+- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-profile-ids-list`
+
+The `ProfileResponse` **MUST** include an `ids[]` array enumerating
+every current `value_type='id'` binding for the resolved person, one
+entry per `(insight_source_type, insight_source_id)` instance. Each
+entry has the shape
+`{ insight_source_type, insight_source_id, value }` and corresponds
+to the latest observation on its partition.
+
+**Rationale**: Consumers downstream (analytics enrichment, future
+front-end org-tree) need the full alias picture without making N
+follow-up lookups per source.
+
+**Actors**: `cpt-insightspec-actor-api-gateway`
+
+#### Validate request body via FluentValidation
+
+- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-profile-validation`
+
+The system **MUST** reject malformed `POST /v1/profiles` bodies with
+`400 Bad Request` + RFC 7807 body before reaching the persistence
+layer. The error type **MUST** be one of:
+`urn:insight:error:invalid_value_type`,
+`urn:insight:error:invalid_value`,
+`urn:insight:error:missing_source_for_id`,
+`urn:insight:error:source_not_allowed_for_email`.
+
+Cross-field rules are expressed via FluentValidation's `When(...)`
+predicates; the validator is registered in DI via
+`AddValidatorsFromAssemblyContaining<…>`.
+
+**Rationale**: Cross-field validation (`value_type='id'` requires
+both source fields; `value_type='email'` forbids them) is not
+ergonomically expressible with Data Annotations; FluentValidation
+keeps the rules in one class that is unit-testable independently of
+the endpoint.
+
+**Actors**: `cpt-insightspec-actor-api-gateway`,
+`cpt-insightspec-actor-platform-sre`
+
+### 5.3 Routing and normalisation
 
 #### Lowercase email at the boundary
 
@@ -321,7 +435,7 @@ a connector backfill.
 
 **Actors**: `cpt-insightspec-actor-api-gateway`
 
-### 5.3 Schema lifecycle
+### 5.4 Schema lifecycle
 
 #### Service-owned migrations at startup
 
