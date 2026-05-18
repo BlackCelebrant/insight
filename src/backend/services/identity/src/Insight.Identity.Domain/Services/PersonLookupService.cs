@@ -22,7 +22,13 @@ public sealed class PersonLookupService
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
-        var emailKey = email.Trim().ToLowerInvariant();
+        // No ToLowerInvariant on the email: the storage-layer bugfix in
+        // cyberfabric/cyber-insight (ADR-0011 / schema-fix PR) switches
+        // `persons.value_id` collation to utf8mb4_unicode_ci, so the
+        // comparison is case-insensitive regardless of how the caller
+        // typed the email. Trim still strips stray whitespace from URL
+        // paths.
+        var emailKey = email.Trim();
 
         var personId = await _reader.ResolvePersonIdByEmailAsync(tenantId, emailKey, cancellationToken)
             .ConfigureAwait(false);

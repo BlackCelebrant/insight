@@ -56,6 +56,7 @@ Architecture-shaping decisions are captured as ADRs in
 - [`cpt-insightspec-adr-0006-display-name-split-fallback`](ADR/0006-display-name-split-fallback.md) — Display-Name Split Fallback.
 - [`cpt-insightspec-adr-0007-value-type-routing`](ADR/0007-value-type-routing.md) — `value_type` Routing.
 - [`cpt-insightspec-adr-0008-bamboohr-identity-inputs-extension`](ADR/0008-bamboohr-identity-inputs-extension.md) — Extend BambooHR `identity_inputs`.
+- [`cpt-insightspec-adr-0009-post-profile-with-uniqueness-invariant`](ADR/0009-post-profile-with-uniqueness-invariant.md) — `POST /v1/profiles` with single-result invariant (Phase 2).
 
 #### Functional Drivers
 
@@ -69,6 +70,10 @@ Architecture-shaping decisions are captured as ADRs in
 | [`cpt-insightspec-fr-identity-routing-lowercase`](PRD.md#lowercase-email-at-the-boundary) | `PersonLookupService.GetByEmailAsync` calls `email.Trim().ToLowerInvariant()` before the repository call. |
 | [`cpt-insightspec-fr-identity-routing-name-split`](PRD.md#display-name-split-fallback) | `DisplayNameSplitter` runs after assembly when both `first_name` and `last_name` observations are missing. |
 | [`cpt-insightspec-fr-identity-migrations-startup`](PRD.md#service-owned-migrations-at-startup) | `Program.cs` calls `MigrationRunner.Run` (DbUp + MySql adapter) before `app.RunAsync()`; embedded SQL resources under `Migrations/`. |
+| [`cpt-insightspec-fr-identity-profile-resolve`](PRD.md#resolve-profile-by-email-or-source-native-id) | New `PersonsEndpoints.MapPost("/v1/profiles")` handler dispatches to `ProfileLookupService.ResolveAsync` which routes by `ResolveProfileKind` (`Email` or `SourceId`) to `IPersonsReader.ResolvePersonIdsByEmailAsync` / `ResolvePersonIdsBySourceIdAsync`. Both reader methods execute CTE queries (`SqlProfiles.cs`) with partition `(insight_tenant_id, person_id, insight_source_type, insight_source_id, value_type)` and `rn=1` filter — the canonical latest-per-source-instance projection. |
+| [`cpt-insightspec-fr-identity-profile-ambiguous-422`](PRD.md#surface-single-result-invariant-via-422) | `ProfileLookupService.ResolveAsync` returns a tagged `ProfileLookupResult` (`Found` / `NotFound` / `Ambiguous`). When the reader returns `>1` distinct `person_id`, the endpoint emits an `AmbiguousProfileProblemResponse` (RFC 7807 extension carrying the lookup body + the matched `person_ids` list) with status 422. |
+| [`cpt-insightspec-fr-identity-profile-ids-list`](PRD.md#project-full-alias-list-on-response) | `IPersonsReader.GetCurrentSourceIdsAsync` runs `SqlProfiles.CurrentSourceIdsForPerson` returning latest `value_type='id'` per source instance; `ProfileAssembler.Assemble` ships the list unchanged into the response shape; `ProfileResponse.From(Profile)` maps the domain record to the wire DTO. |
+| [`cpt-insightspec-fr-identity-profile-validation`](PRD.md#validate-request-body-via-fluentvalidation) | `ResolveProfileCommandValidator` (FluentValidation `AbstractValidator<ResolveProfileCommandModel>`) expresses cross-field rules via `When(value_type=='id', ...)` / `When(value_type=='email', ...)`; registered via `AddValidatorsFromAssemblyContaining<…>` in `Program.cs`; endpoint awaits `validator.ValidateAsync` before resolving tenant; first-error wins on `urn:insight:error:*` URN. |
 
 #### NFR Allocation
 
