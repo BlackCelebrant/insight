@@ -3,21 +3,29 @@
 //! Five metrics, all with stable UUIDs in the
 //! `00000000-0000-0000-0001-00000000002X` block:
 //!
-//!   * `0020 CRM KPIs`                    — hero strip + pacing + pipeline-now snapshot
+//!   * `0020 CRM KPIs`                    — hero strip + pacing (flow metric)
 //!   * `0021 CRM Chart Deal Flow`         — weekly opened / closed / won
 //!   * `0022 CRM Bullet Velocity Quality` — win rate, cycle, avg deal size, deals opened (vs team)
 //!   * `0023 CRM Bullet Activity`         — calls, emails, meetings, comms-per-won (vs team)
-//!   * `0027 CRM Sources`                 — `hs_analytics_source` mix donut
+//!   * `0028 CRM Pipeline Now`            — date-less open-deal snapshot per rep
 //!
-//! UUIDs `…0024 / …0025 / …0026` stay RESERVED — earlier drafts seeded a
-//! Closing-Soon table (0024), Lost-Reasons composition (0025), and
-//! Deal-Types composition (0026). All three were dropped before merge:
-//! 0024 because the action-queue UX is off-axis for Insight's person-
-//! performance lens; 0025 / 0026 because Constructor's HubSpot doesn't
-//! fill `properties_closed_lost_reason` / `properties_dealtype`, so each
-//! collapsed to a single `(no reason)` / `(unspecified)` bar in the UI.
-//! Reserve them so the UUIDs are available if/when those sections come
-//! back.
+//! `0028` is split from `0020` because pipeline-now is a stock metric —
+//! one row per rep, no `metric_date` dimension — while the rest of the
+//! KPIs sum across the selected period. Folding it back into `0020` would
+//! require the analytics-api to skip its date-filter injection for one
+//! column (or fanning the snapshot across N dates, which we tried and
+//! dropped in review — O(reps × 365) row count for a constant value).
+//!
+//! UUIDs `…0024 / …0025 / …0026 / …0027` stay RESERVED — earlier drafts
+//! seeded a Closing-Soon table (0024), Lost-Reasons composition (0025),
+//! Deal-Types composition (0026), and a Sources mix donut (0027). All four
+//! were dropped before merge: 0024 because the action-queue UX is off-axis
+//! for Insight's person-performance lens; 0025 / 0026 because Constructor's
+//! HubSpot doesn't fill `properties_closed_lost_reason` /
+//! `properties_dealtype`, so each collapsed to a single `(no reason)` /
+//! `(unspecified)` bar in the UI; 0027 deferred pending an `hs_analytics_
+//! source` enrichment pass at silver. Reserve them so the UUIDs are
+//! available if/when those sections come back.
 //!
 //! Source views live in CH migration `20260512000000_crm-gold-views.sql`.
 //! Frontend UUIDs mirror these in
@@ -37,6 +45,7 @@ const CRM_KPIS_ID:             &str = "00000000000000000001000000000020";
 const CRM_CHART_FLOW_ID:       &str = "00000000000000000001000000000021";
 const CRM_BULLET_QUALITY_ID:   &str = "00000000000000000001000000000022";
 const CRM_BULLET_ACTIVITY_ID:  &str = "00000000000000000001000000000023";
+const CRM_PIPELINE_NOW_ID:     &str = "00000000000000000001000000000028";
 
 // ---------------------------------------------------------------------------
 // Names + descriptions
@@ -46,9 +55,10 @@ const CRM_KPIS_NAME:            &str = "CRM KPIs";
 const CRM_CHART_FLOW_NAME:      &str = "CRM Chart Deal Flow";
 const CRM_BULLET_QUALITY_NAME:  &str = "CRM Bullet Velocity Quality";
 const CRM_BULLET_ACTIVITY_NAME: &str = "CRM Bullet Activity";
+const CRM_PIPELINE_NOW_NAME:    &str = "CRM Pipeline Now";
 
 const CRM_KPIS_DESC: &str =
-    "Sales rep KPIs from HubSpot: open/closed deals, value, communications, pipeline now";
+    "Sales rep KPIs from HubSpot: open/closed deals, won count + value, communications volume";
 const CRM_CHART_FLOW_DESC: &str =
     "Weekly opened / closed / won deal counts per sales rep";
 const CRM_BULLET_QUALITY_DESC: &str =
@@ -58,6 +68,9 @@ const CRM_BULLET_ACTIVITY_DESC: &str =
     "Sales outreach-activity bullet metrics: calls, emails, meetings volumes \
      and comms-per-won-deal efficiency — with team median/min/max for \
      vs-team comparison.";
+const CRM_PIPELINE_NOW_DESC: &str =
+    "Open-deal snapshot per rep (count + summed amount_home). Stock metric — \
+     point-in-time, no date dimension.";
 
 // ---------------------------------------------------------------------------
 // query_ref strings
@@ -68,10 +81,15 @@ sum(deals_opened) AS deals_opened, \
 sum(deals_closed) AS deals_closed, \
 sum(deals_won) AS deals_won, \
 round(sum(deals_value_closed)) AS deals_value_closed, \
-sum(comms_count) AS comms_count, \
-max(pipeline_count) AS pipeline_count, \
-round(max(pipeline_value)) AS pipeline_value \
+sum(comms_count) AS comms_count \
 FROM insight.crm_kpis GROUP BY person_id";
+
+// Date-less — `insight.crm_pipeline_now` has no `metric_date` column, so
+// analytics-api's date-filter injection no-ops on it. Single row per rep.
+const CRM_PIPELINE_NOW_QUERY: &str = "SELECT person_id, \
+pipeline_count, \
+pipeline_value \
+FROM insight.crm_pipeline_now";
 
 const CRM_CHART_FLOW_QUERY: &str =
     "SELECT date_bucket, opened, closed, won, person_id, metric_date FROM insight.crm_chart_flow";
@@ -189,6 +207,7 @@ const SEEDS: &[(&str, &str, &str, &str)] = &[
     (CRM_CHART_FLOW_ID,      CRM_CHART_FLOW_NAME,      CRM_CHART_FLOW_DESC,      CRM_CHART_FLOW_QUERY),
     (CRM_BULLET_QUALITY_ID,  CRM_BULLET_QUALITY_NAME,  CRM_BULLET_QUALITY_DESC,  CRM_BULLET_QUALITY_QUERY),
     (CRM_BULLET_ACTIVITY_ID, CRM_BULLET_ACTIVITY_NAME, CRM_BULLET_ACTIVITY_DESC, CRM_BULLET_ACTIVITY_QUERY),
+    (CRM_PIPELINE_NOW_ID,    CRM_PIPELINE_NOW_NAME,    CRM_PIPELINE_NOW_DESC,    CRM_PIPELINE_NOW_QUERY),
 ];
 
 #[async_trait::async_trait]

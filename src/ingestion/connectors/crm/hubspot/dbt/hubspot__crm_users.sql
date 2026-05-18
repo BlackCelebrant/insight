@@ -22,8 +22,11 @@
 --                                       engagements + deals (who-logged-it side).
 -- Both need to resolve to a single canonical rep (`email`), so we expose
 -- them as parallel columns; Silver gold-side joins pick whichever applies.
+-- Schema derived from the dbt source so a tenant-prefixed
+-- `bronze_hubspot_<tenant>` rename doesn't silently drop the archived arm.
+{%- set bronze_schema = source('bronze_hubspot', 'owners').schema -%}
 {%- set bronze_tables = ['owners'] -%}
-{%- if adapter.get_relation(database=none, schema='bronze_hubspot', identifier='owners_archived') -%}
+{%- if adapter.get_relation(database=none, schema=bronze_schema, identifier='owners_archived') -%}
   {%- do bronze_tables.append('owners_archived') -%}
 {%- endif %}
 

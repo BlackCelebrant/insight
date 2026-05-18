@@ -16,16 +16,19 @@
 -- Archived siblings are only synced when Airbyte's HubSpot connector is
 -- configured to backfill deleted records — guard each UNION with
 -- adapter.get_relation so absent archived tables don't break the build.
+-- Schema derived from the dbt source so a tenant-prefixed
+-- `bronze_hubspot_<tenant>` rename doesn't silently drop the archived arms.
+{%- set bronze_schema = source('bronze_hubspot', 'engagements_meetings').schema -%}
 {%- set calls_tables = ['engagements_calls'] -%}
-{%- if adapter.get_relation(database=none, schema='bronze_hubspot', identifier='engagements_calls_archived') -%}
+{%- if adapter.get_relation(database=none, schema=bronze_schema, identifier='engagements_calls_archived') -%}
   {%- do calls_tables.append('engagements_calls_archived') -%}
 {%- endif -%}
 {%- set emails_tables = ['engagements_emails'] -%}
-{%- if adapter.get_relation(database=none, schema='bronze_hubspot', identifier='engagements_emails_archived') -%}
+{%- if adapter.get_relation(database=none, schema=bronze_schema, identifier='engagements_emails_archived') -%}
   {%- do emails_tables.append('engagements_emails_archived') -%}
 {%- endif -%}
 {%- set tasks_tables = ['engagements_tasks'] -%}
-{%- if adapter.get_relation(database=none, schema='bronze_hubspot', identifier='engagements_tasks_archived') -%}
+{%- if adapter.get_relation(database=none, schema=bronze_schema, identifier='engagements_tasks_archived') -%}
   {%- do tasks_tables.append('engagements_tasks_archived') -%}
 {%- endif %}
 

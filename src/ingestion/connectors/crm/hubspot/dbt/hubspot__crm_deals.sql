@@ -13,9 +13,12 @@
 -- so an archive event always outranks the prior live update. The archived
 -- sibling is only synced when Airbyte's HubSpot connector is configured to
 -- backfill deleted records — guard the UNION with adapter.get_relation so
--- absent archived tables don't break the build.
+-- absent archived tables don't break the build. Derive the bronze schema
+-- from the dbt source so a tenant-prefixed `bronze_hubspot_<tenant>` rename
+-- doesn't silently drop the archived UNION arm.
+{%- set bronze_schema = source('bronze_hubspot', 'deals').schema -%}
 {%- set bronze_tables = ['deals'] -%}
-{%- if adapter.get_relation(database=none, schema='bronze_hubspot', identifier='deals_archived') -%}
+{%- if adapter.get_relation(database=none, schema=bronze_schema, identifier='deals_archived') -%}
   {%- do bronze_tables.append('deals_archived') -%}
 {%- endif %}
 

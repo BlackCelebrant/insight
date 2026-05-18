@@ -8,9 +8,11 @@
 -- bronze → staging (dbt) → silver (dbt) → gold (this file) contract
 -- the rest of the codebase already follows.
 --
---   1. `insight.crm_kpis`        — daily wide rollup (hero strip + pacing)
---   2. `insight.crm_chart_flow`  — weekly opened/closed/won (flow chart)
---   3. `insight.crm_bullet_rows` — long-format key/value (V&Q + Activity bullets)
+--   1. `insight.crm_kpis`         — daily wide rollup (hero strip + pacing)
+--   2. `insight.crm_chart_flow`   — weekly opened/closed/won (flow chart)
+--   3. `insight.crm_bullet_rows`  — long-format key/value (V&Q + Activity bullets)
+--   4. `insight.crm_pipeline_now` — date-less open-deal snapshot per rep
+--                                   (Pipeline Now hero card)
 --
 -- Identity resolution
 -- -------------------
@@ -36,13 +38,18 @@
 -- `acv`/`tcv`/`arr` are HubSpot-computed contract rollups but sparse
 -- (~10% population); they're exposed by silver but not aggregated here.
 --
--- Stock metrics
+-- Stock vs flow
 -- -------------
--- `pipeline_count` / `pipeline_value` are point-in-time (count of
--- currently-open deals per rep). They're fanned across the last 365
--- dates so the analytics-api date filter doesn't drop them; gold's
--- `query_ref` uses `max(pipeline_*)` (not `sum`) to collapse the
--- repeated rows back to the constant snapshot value.
+-- `crm_kpis` / `crm_chart_flow` / `crm_bullet_rows` are flow metrics —
+-- attributed to an event date and intersected with the period filter.
+-- `crm_pipeline_now` is a stock metric — current count + $ of open deals
+-- per rep as of query time. It exposes no `metric_date` column so the
+-- analytics-api date-filter injection no-ops, and the FE calls it
+-- without a period (`/queryMetric` with `$filter=person_id eq '…'`).
+-- Earlier drafts surfaced pipeline-now inside `crm_kpis` via a
+-- `range(365)` fan-out; that was dropped because it produced ~365 rows
+-- per rep per query for a constant value. Split-out keeps the snapshot
+-- O(reps) instead of O(reps × 365).
 --
 -- ReplacingMergeTree + FINAL
 -- --------------------------
@@ -50,7 +57,20 @@
 -- ReplacingMergeTree(_version). Background merges aren't synchronous, so
 -- a `SELECT` without `FINAL` can see un-merged duplicates. We use
 -- `FINAL` on every silver read here — small extra cost on a per-rep
--- dashboard query; precision is worth more than a few ms.
+-- dashboard query; precision is worth more than a few ms. Each view
+-- hoists `silver.class_crm_deals FINAL` (and where applicable
+-- `silver.class_crm_activities FINAL`) into a single `*_dedup` CTE that
+-- downstream CTEs read from, so the version-resolve pass runs once per
+-- view regardless of how many CTEs reference deals.
+--
+-- Identity-resolution / `is_active`
+-- ---------------------------------
+-- Each view's `owners` CTE intentionally does NOT filter `is_active`:
+-- a rep who's currently archived may still own historical deals and
+-- engagements that need to aggregate correctly under their email key.
+-- `person_id` is `lower(email)` on both the owners and people side — the
+-- silver model writes `email` as-is (HubSpot/Bamboo preserve case), so
+-- the `lower()` on both join sides is what guarantees the key matches.
 -- =====================================================================
 
 CREATE DATABASE IF NOT EXISTS insight;
@@ -60,14 +80,21 @@ CREATE DATABASE IF NOT EXISTS insight;
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE VIEW insight.crm_kpis AS
 WITH
+  -- Single dedup pass per silver source — referenced by all downstream
+  -- CTEs so FINAL runs once regardless of how many CTEs read deals /
+  -- activities. See header for full rationale.
+  deals_dedup AS (
+    SELECT * FROM silver.class_crm_deals FINAL
+  ),
+  activities_dedup AS (
+    SELECT * FROM silver.class_crm_activities FINAL
+  ),
   -- Owner adapter: HubSpot ID space → canonical email key.
   -- Two parallel projections so deal-side (`user_id`) and engagement-side
   -- (`hs_user_id`) joins each get a narrow lookup table.
   owners AS (
     SELECT user_id, hs_user_id, lower(assumeNotNull(email)) AS person_id
     FROM silver.class_crm_users FINAL
-    -- Don't filter `is_active` — a rep who's currently archived may still
-    -- own historical deals/engagements that should aggregate correctly.
     WHERE email IS NOT NULL AND email != ''
   ),
   -- Bamboo department for `org_unit_id`. HubSpot Owners API exposes no
@@ -87,10 +114,8 @@ WITH
       toUInt64(0)                   AS deals_closed,
       toUInt64(0)                   AS deals_won,
       toFloat64(0)                  AS deals_value_closed,
-      toUInt64(0)                   AS comms_count,
-      toUInt64(0)                   AS pipeline_count,
-      toFloat64(0)                  AS pipeline_value
-    FROM silver.class_crm_deals d FINAL
+      toUInt64(0)                   AS comms_count
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     WHERE d.created_at IS NOT NULL
     GROUP BY metric_date, person_id
@@ -104,10 +129,8 @@ WITH
       count()                                           AS deals_closed,
       countIf(d.is_won = 1)                             AS deals_won,
       sumIf(coalesce(d.amount_home, 0), d.is_won = 1)   AS deals_value_closed,
-      toUInt64(0)                                       AS comms_count,
-      toUInt64(0)                                       AS pipeline_count,
-      toFloat64(0)                                      AS pipeline_value
-    FROM silver.class_crm_deals d FINAL
+      toUInt64(0)                                       AS comms_count
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     WHERE d.is_closed = 1 AND d.close_date IS NOT NULL
     GROUP BY metric_date, person_id
@@ -130,10 +153,8 @@ WITH
       toUInt64(0)                                                     AS deals_closed,
       toUInt64(0)                                                     AS deals_won,
       toFloat64(0)                                                    AS deals_value_closed,
-      count()                                                         AS comms_count,
-      toUInt64(0)                                                     AS pipeline_count,
-      toFloat64(0)                                                    AS pipeline_value
-    FROM silver.class_crm_activities a FINAL
+      count()                                                         AS comms_count
+    FROM activities_dedup a
     LEFT JOIN owners by_user  ON by_user.hs_user_id = a.created_by_user_id
     LEFT JOIN owners by_owner ON by_owner.user_id    = a.owner_id
     WHERE a.timestamp IS NOT NULL
@@ -142,38 +163,10 @@ WITH
              nullIf(by_user.person_id, '')) IS NOT NULL
     GROUP BY metric_date, person_id
   ),
-  -- Stock: pipeline-now snapshot per rep — count + $ of open deals as of
-  -- today, then fanned across the last 365 days so the analytics-api
-  -- date filter doesn't drop the row. Outer aggregate uses max(), not
-  -- sum(), so the constant snapshot collapses back to a single value.
-  pipeline_now AS (
-    SELECT
-      o.person_id                                       AS person_id,
-      countIf(d.is_closed = 0)                          AS pipeline_count,
-      sumIf(coalesce(d.amount_home, 0), d.is_closed = 0) AS pipeline_value
-    FROM silver.class_crm_deals d FINAL
-    INNER JOIN owners o ON o.user_id = d.owner_id
-    GROUP BY person_id
-  ),
-  pipeline_fanned AS (
-    SELECT
-      toDate(today() - n)            AS metric_date,
-      p.person_id                    AS person_id,
-      toUInt64(0)                    AS deals_opened,
-      toUInt64(0)                    AS deals_closed,
-      toUInt64(0)                    AS deals_won,
-      toFloat64(0)                   AS deals_value_closed,
-      toUInt64(0)                    AS comms_count,
-      p.pipeline_count               AS pipeline_count,
-      p.pipeline_value               AS pipeline_value
-    FROM pipeline_now p
-    ARRAY JOIN range(365) AS n
-  ),
   unioned AS (
     SELECT * FROM opened_by_day
     UNION ALL SELECT * FROM closed_by_day
     UNION ALL SELECT * FROM comms_by_day
-    UNION ALL SELECT * FROM pipeline_fanned
   )
 SELECT
   u.metric_date                                  AS metric_date,
@@ -184,9 +177,7 @@ SELECT
   sum(u.deals_closed)                            AS deals_closed,
   sum(u.deals_won)                               AS deals_won,
   sum(u.deals_value_closed)                      AS deals_value_closed,
-  sum(u.comms_count)                             AS comms_count,
-  max(u.pipeline_count)                          AS pipeline_count,
-  max(u.pipeline_value)                          AS pipeline_value
+  sum(u.comms_count)                             AS comms_count
 FROM unioned u
 LEFT JOIN people p ON p.person_id = u.person_id
 WHERE u.metric_date IS NOT NULL
@@ -194,15 +185,49 @@ GROUP BY u.metric_date, u.person_id, p.org_unit_id;
 
 
 -- ---------------------------------------------------------------------
--- 2. insight.crm_chart_flow — weekly opened/closed/won
+-- 2. insight.crm_pipeline_now — date-less open-deal snapshot per rep
 -- ---------------------------------------------------------------------
-CREATE OR REPLACE VIEW insight.crm_chart_flow AS
+-- Powers the "Pipeline Now" hero card. No `metric_date` column — the
+-- analytics-api date-filter injection skips views without one, and the
+-- FE calls this without a period.
+CREATE OR REPLACE VIEW insight.crm_pipeline_now AS
 WITH
+  deals_dedup AS (
+    SELECT * FROM silver.class_crm_deals FINAL
+  ),
   owners AS (
     SELECT user_id, lower(assumeNotNull(email)) AS person_id
     FROM silver.class_crm_users FINAL
-    -- Don't filter `is_active` — a rep who's currently archived may still
-    -- own historical deals/engagements that should aggregate correctly.
+    WHERE email IS NOT NULL AND email != ''
+  ),
+  people AS (
+    SELECT lower(assumeNotNull(email)) AS person_id,
+           coalesce(department_name, 'Unknown') AS org_unit_id
+    FROM silver.class_people FINAL
+    WHERE email IS NOT NULL AND email != ''
+  )
+SELECT
+  o.person_id                                          AS person_id,
+  coalesce(p.org_unit_id, 'Unknown')                   AS org_unit_id,
+  countIf(d.is_closed = 0)                             AS pipeline_count,
+  round(sumIf(coalesce(d.amount_home, 0), d.is_closed = 0)) AS pipeline_value
+FROM deals_dedup d
+INNER JOIN owners o ON o.user_id = d.owner_id
+LEFT JOIN people p  ON p.person_id = o.person_id
+GROUP BY o.person_id, p.org_unit_id;
+
+
+-- ---------------------------------------------------------------------
+-- 3. insight.crm_chart_flow — weekly opened/closed/won
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE VIEW insight.crm_chart_flow AS
+WITH
+  deals_dedup AS (
+    SELECT * FROM silver.class_crm_deals FINAL
+  ),
+  owners AS (
+    SELECT user_id, lower(assumeNotNull(email)) AS person_id
+    FROM silver.class_crm_users FINAL
     WHERE email IS NOT NULL AND email != ''
   ),
   people AS (
@@ -217,7 +242,7 @@ WITH
            count()                           AS opened,
            toUInt64(0)                       AS closed,
            toUInt64(0)                       AS won
-    FROM silver.class_crm_deals d FINAL
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     WHERE d.created_at IS NOT NULL
     GROUP BY week_start, person_id
@@ -228,7 +253,7 @@ WITH
            toUInt64(0)                        AS opened,
            count()                            AS closed,
            countIf(d.is_won = 1)              AS won
-    FROM silver.class_crm_deals d FINAL
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     WHERE d.is_closed = 1 AND d.close_date IS NOT NULL
     GROUP BY week_start, person_id
@@ -251,18 +276,22 @@ GROUP BY u.person_id, p.org_unit_id, u.week_start;
 
 
 -- ---------------------------------------------------------------------
--- 3. insight.crm_bullet_rows — long-format key/value
+-- 4. insight.crm_bullet_rows — long-format key/value
 -- ---------------------------------------------------------------------
 -- One row per source event with `metric_key` discriminator. Catalog
 -- `query_ref`s (CRM_BULLET_QUALITY, CRM_BULLET_ACTIVITY) ARRAY-JOIN this
 -- into the bullet metrics the FE renders.
 CREATE OR REPLACE VIEW insight.crm_bullet_rows AS
 WITH
+  deals_dedup AS (
+    SELECT * FROM silver.class_crm_deals FINAL
+  ),
+  activities_dedup AS (
+    SELECT * FROM silver.class_crm_activities FINAL
+  ),
   owners AS (
     SELECT user_id, hs_user_id, lower(assumeNotNull(email)) AS person_id
     FROM silver.class_crm_users FINAL
-    -- Don't filter `is_active` — a rep who's currently archived may still
-    -- own historical deals/engagements that should aggregate correctly.
     WHERE email IS NOT NULL AND email != ''
   ),
   people AS (
@@ -279,7 +308,7 @@ WITH
       coalesce(p.org_unit_id, 'Unknown')   AS org_unit_id,
       'deals_opened'                       AS metric_key,
       toFloat64(1)                         AS metric_value
-    FROM silver.class_crm_deals d FINAL
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     LEFT JOIN people p ON p.person_id = o.person_id
     WHERE d.created_at IS NOT NULL
@@ -291,7 +320,7 @@ WITH
       coalesce(p.org_unit_id, 'Unknown')   AS org_unit_id,
       'deals_closed'                       AS metric_key,
       toFloat64(1)                         AS metric_value
-    FROM silver.class_crm_deals d FINAL
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     LEFT JOIN people p ON p.person_id = o.person_id
     WHERE d.is_closed = 1 AND d.close_date IS NOT NULL
@@ -303,7 +332,7 @@ WITH
       coalesce(p.org_unit_id, 'Unknown')   AS org_unit_id,
       'deals_won'                          AS metric_key,
       toFloat64(1)                         AS metric_value
-    FROM silver.class_crm_deals d FINAL
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     LEFT JOIN people p ON p.person_id = o.person_id
     WHERE d.is_won = 1 AND d.close_date IS NOT NULL
@@ -318,7 +347,7 @@ WITH
       coalesce(p.org_unit_id, 'Unknown')   AS org_unit_id,
       'cycle_days'                         AS metric_key,
       toFloat64(greatest(0, dateDiff('day', toDate(d.created_at), d.close_date)))  AS metric_value
-    FROM silver.class_crm_deals d FINAL
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     LEFT JOIN people p ON p.person_id = o.person_id
     WHERE d.is_won = 1 AND d.close_date IS NOT NULL AND d.created_at IS NOT NULL
@@ -330,7 +359,7 @@ WITH
       coalesce(p.org_unit_id, 'Unknown')   AS org_unit_id,
       'deal_size'                          AS metric_key,
       coalesce(d.amount_home, 0)           AS metric_value
-    FROM silver.class_crm_deals d FINAL
+    FROM deals_dedup d
     INNER JOIN owners o ON o.user_id = d.owner_id
     LEFT JOIN people p ON p.person_id = o.person_id
     WHERE d.is_won = 1 AND d.close_date IS NOT NULL AND d.amount_home IS NOT NULL
@@ -354,7 +383,7 @@ WITH
         a.activity_type
       )                                                        AS metric_key,
       toFloat64(1)                                             AS metric_value
-    FROM silver.class_crm_activities a FINAL
+    FROM activities_dedup a
     LEFT JOIN owners by_user  ON by_user.hs_user_id = a.created_by_user_id
     LEFT JOIN owners by_owner ON by_owner.user_id    = a.owner_id
     LEFT JOIN people p
