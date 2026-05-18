@@ -10,11 +10,14 @@ public interface IPersonsReader
     /// <summary>
     /// Resolve a single <c>person_id</c> from a lookup email. Returns
     /// <c>null</c> when no current observation in the tenant has
-    /// <c>value_type='email'</c> = <paramref name="emailLowercase"/>.
+    /// <c>value_type='email'</c> = <paramref name="email"/>. The
+    /// comparison is case-insensitive thanks to the
+    /// <c>utf8mb4_unicode_ci</c> collation on <c>persons.value_id</c>
+    /// (ADR-0011 / schema-fix PR).
     /// </summary>
     Task<Guid?> ResolvePersonIdByEmailAsync(
         Guid tenantId,
-        string emailLowercase,
+        string email,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -40,12 +43,15 @@ public interface IPersonsReader
     /// <summary>
     /// Phase 2 (POST /v1/profiles, value_type='email'): distinct
     /// <c>person_id</c>s whose CURRENT email observation on any source
-    /// equals <paramref name="emailLowercase"/>. Empty list = no match.
+    /// equals <paramref name="email"/>. Empty list = no match.
     /// Count &gt; 1 = data invariant violated, caller maps to 422.
+    /// The comparison is case-insensitive thanks to the
+    /// <c>utf8mb4_unicode_ci</c> collation on <c>persons.value_id</c>
+    /// (ADR-0011 / schema-fix PR).
     /// </summary>
     Task<IReadOnlyList<Guid>> ResolvePersonIdsByEmailAsync(
         Guid tenantId,
-        string emailLowercase,
+        string email,
         CancellationToken cancellationToken);
 
     /// <summary>

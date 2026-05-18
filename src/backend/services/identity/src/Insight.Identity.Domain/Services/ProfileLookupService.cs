@@ -26,9 +26,15 @@ public sealed class ProfileLookupService
 
         IReadOnlyList<Guid> personIds = query.Kind switch
         {
+            // No ToLowerInvariant on the email: the storage-layer
+            // bugfix in cyberfabric/cyber-insight (ADR-0011 / schema-fix PR)
+            // switches `persons.value_id` collation to utf8mb4_unicode_ci,
+            // so the comparison is case-insensitive regardless of how
+            // the caller typed the email. Trim still strips stray
+            // whitespace from URL paths.
             ResolveProfileKind.Email => await _reader.ResolvePersonIdsByEmailAsync(
                     tenantId,
-                    query.Value.Trim().ToLowerInvariant(),
+                    query.Value.Trim(),
                     cancellationToken)
                 .ConfigureAwait(false),
             ResolveProfileKind.SourceId => await _reader.ResolvePersonIdsBySourceIdAsync(

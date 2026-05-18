@@ -106,7 +106,7 @@ public sealed class ProfileLookupServiceTests
         public int EmailCalls { get; private set; }
         public int SourceIdCalls { get; private set; }
 
-        public Task<IReadOnlyList<Guid>> ResolvePersonIdsByEmailAsync(Guid tenantId, string emailLowercase, CancellationToken cancellationToken)
+        public Task<IReadOnlyList<Guid>> ResolvePersonIdsByEmailAsync(Guid tenantId, string email, CancellationToken cancellationToken)
         {
             EmailCalls++;
             return Task.FromResult(ResolveEmail);
@@ -125,7 +125,7 @@ public sealed class ProfileLookupServiceTests
             => Task.FromResult(CurrentSourceIds);
 
         // Phase-1 surface — not used by ProfileLookupService.
-        public Task<Guid?> ResolvePersonIdByEmailAsync(Guid tenantId, string emailLowercase, CancellationToken cancellationToken)
+        public Task<Guid?> ResolvePersonIdByEmailAsync(Guid tenantId, string email, CancellationToken cancellationToken)
             => Task.FromResult<Guid?>(null);
 
         public Task<IReadOnlyList<Guid>> GetDirectSubordinateIdsAsync(Guid tenantId, Guid parentPersonId, CancellationToken cancellationToken)
