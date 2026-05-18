@@ -59,7 +59,7 @@ public sealed class MariaDbFixture : IAsyncLifetime
             insight_source_type VARCHAR(100) NOT NULL,
             insight_source_id BINARY(16) NOT NULL,
             insight_tenant_id BINARY(16) NOT NULL,
-            value_id VARCHAR(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
+            value_id VARCHAR(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
             value_full_text VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
             value TEXT NULL,
             value_effective TEXT
@@ -72,7 +72,7 @@ public sealed class MariaDbFixture : IAsyncLifetime
             created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
             UNIQUE KEY uq_person_observation (
                 insight_tenant_id, person_id, insight_source_type, insight_source_id,
-                value_type, value_hash
+                value_type, created_at
             ),
             INDEX idx_value_id (insight_tenant_id, value_type, value_id),
             INDEX idx_value_full_text (insight_tenant_id, value_type, value_full_text),
