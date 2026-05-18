@@ -24,13 +24,13 @@ public sealed class PersonsRepository : IPersonsReader
 
     public async Task<Guid?> ResolvePersonIdByEmailAsync(
         Guid tenantId,
-        string emailLowercase,
+        string email,
         CancellationToken cancellationToken)
     {
         await using var conn = await _factory.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var cmd = new MySqlCommand(Sql.ResolvePersonIdByEmail, conn);
         cmd.Parameters.AddWithValue("@tenant_id", tenantId.ToByteArray(bigEndian: true));
-        cmd.Parameters.AddWithValue("@email", emailLowercase);
+        cmd.Parameters.AddWithValue("@email", email);
         var raw = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return raw is byte[] bytes && bytes.Length == 16 ? new Guid(bytes, bigEndian: true) : null;
     }
