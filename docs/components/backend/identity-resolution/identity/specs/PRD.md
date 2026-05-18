@@ -348,7 +348,7 @@ the cache is read by Phase 2 endpoint enrichment and Phase 3 subchart
 walks.
 
 The cache depends on **`value_type='status'`** observations to close
-edges on employee deactivation (see `cpt-insightspec-fr-identity-parent-map-rebuild`
+edges on employee deactivation (see `cpt-insightspec-fr-identity-org-chart-rebuild`
 below). The canonical value_type set the rebuild reads is therefore
 `parent_email`, `parent_person_id`, `email`, and `status` — these
 must continue to be enumerable as expected `value_type` values in
@@ -364,9 +364,9 @@ is captured for future-readers, not implemented in Phase 1.
 
 #### Materialised parent/child edge cache
 
-- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-parent-map-table`
+- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-org-chart-table`
 
-The service **MUST** own a `person_parent_map` table that stores
+The service **MUST** own a `org_chart` table that stores
 direct parent->child edges per
 `(insight_tenant_id, insight_source_type, insight_source_id)` and
 keeps SCD2 history via `valid_from`/`valid_to`. The Phase-1 invariant
@@ -385,12 +385,12 @@ index walk rather than a partition-arithmetic-inside-recursion query.
 
 #### Rebuild edges from persons deterministically
 
-- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-parent-map-rebuild`
+- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-org-chart-rebuild`
 
 The seeder (`seed-persons-from-identity-input.py` step 9) **MUST**
-rebuild `person_parent_map` from `persons` using the same two-table-
+rebuild `org_chart` from `persons` using the same two-table-
 swap pattern as `account_person_map`: build into
-`person_parent_map_next`, atomically `RENAME TABLE` into place, drop
+`org_chart_next`, atomically `RENAME TABLE` into place, drop
 the old artefact. The rebuild **MUST** UNION two sources of edges:
 
 1. `value_type='parent_person_id'` observations (resolved Insight
@@ -427,7 +427,7 @@ observations:
   that emit `parent_email` without `status` do not silently drop
   every edge.
 - Re-activation (Inactive -> Active) **MUST** produce a second
-  `person_parent_map` row for the same (child, parent, source)
+  `org_chart` row for the same (child, parent, source)
   rather than reopening the existing closed row; SCD2 history
   reflects every deactivation/reactivation cycle honestly.
 
@@ -457,10 +457,10 @@ ADR-0002.
 
 #### Read current parent and children edges
 
-- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-parent-map-read`
+- [x] `p1` - **ID**: `cpt-insightspec-fr-identity-org-chart-read`
 
 The service **MUST** expose `IPersonsReader.GetCurrentParentsAsync`
-and `GetCurrentChildrenAsync` returning `PersonParentEdge` records
+and `GetCurrentChildrenAsync` returning `OrgChartEdge` records
 scoped to a single tenant. Both **MUST** read CURRENT edges only
 (`valid_to IS NULL`) and **MUST** preserve per-source-instance edge
 granularity in the result. Temporal "as-of T" queries are Phase 3+

@@ -13,8 +13,8 @@ namespace Insight.Identity.Tests.Integration;
 /// `state_log` / `state_transitions` / `active_intervals` CTE chain
 /// that decides when a parent->child edge is "currently open" vs
 /// "closed at the deactivation moment". The full rebuild also
-/// joins parent_email -> email and produces person_parent_map rows;
-/// `PersonParentMapTests.cs` covers the reader side. This file
+/// joins parent_email -> email and produces org_chart rows;
+/// `OrgChartTests.cs` covers the reader side. This file
 /// drills into the SCD2 logic specifically because the cypilot-pr-review
 /// on PR #477 (Finding F1) caught a window-over-filtered-rows bug
 /// here that the kind-cluster run did not surface (the production
@@ -173,7 +173,7 @@ public sealed class ActiveIntervalsTests : IAsyncLifetime
     // ── F4 regression: schema does NOT have UNIQUE on (child, valid_to) ──
 
     [Fact]
-    public async Task PersonParentMap_schema_has_no_unique_on_valid_to()
+    public async Task OrgChart_schema_has_no_unique_on_valid_to()
     {
         // The migration header used to claim "UNIQUE on
         // (..., child_person_id, valid_to) enforces this invariant".
@@ -185,12 +185,12 @@ public sealed class ActiveIntervalsTests : IAsyncLifetime
         await using var conn = new MySqlConnection(_fixture.ConnectionString);
         await conn.OpenAsync().ConfigureAwait(false);
 
-        // Collect UNIQUE/PRIMARY indexes on person_parent_map.
+        // Collect UNIQUE/PRIMARY indexes on org_chart.
         const string sql = """
             SELECT INDEX_NAME, NON_UNIQUE
             FROM information_schema.STATISTICS
             WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME   = 'person_parent_map'
+              AND TABLE_NAME   = 'org_chart'
             GROUP BY INDEX_NAME, NON_UNIQUE
             """;
         await using var cmd = new MySqlCommand(sql, conn);

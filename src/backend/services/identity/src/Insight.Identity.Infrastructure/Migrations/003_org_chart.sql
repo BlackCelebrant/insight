@@ -28,8 +28,8 @@
 -- per source would relax this by adding parent_person_id to the PK.
 --
 -- See ADR-0010 and docs/components/backend/identity-resolution/identity
--- /specs/DESIGN.md "Table: person_parent_map".
-CREATE TABLE IF NOT EXISTS person_parent_map (
+-- /specs/DESIGN.md "Table: org_chart".
+CREATE TABLE IF NOT EXISTS org_chart (
     insight_tenant_id BINARY(16) NOT NULL,
     insight_source_type VARCHAR(100) NOT NULL,
     insight_source_id BINARY(16) NOT NULL,

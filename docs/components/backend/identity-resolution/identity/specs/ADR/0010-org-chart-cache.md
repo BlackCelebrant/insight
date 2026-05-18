@@ -1,6 +1,6 @@
-# ADR-0010: Materialized SCD2 Cache for Person Parent/Child Edges
+# ADR-0010: Materialized SCD2 Cache for Person Parent/Child Edges (`org_chart`)
 
-**ID**: `cpt-insightspec-adr-0010-person-parent-map-cache`
+**ID**: `cpt-insightspec-adr-0010-org-chart-cache`
 
 **Status:** Accepted
 
@@ -75,7 +75,7 @@ Phase 1.
 
 ## Considered Options
 
-- A materialized SCD2 edge table (`person_parent_map`) rebuilt by the
+- A materialized SCD2 edge table (`org_chart`) rebuilt by the
   Python seeder from two sources: `parent_person_id` observations
   (future-proof) UNION `parent_email` observations resolved via JOIN
   to current email-bearers. Unresolved parent_emails are skipped, no
@@ -90,7 +90,7 @@ Phase 1.
 
 ## Decision Outcome
 
-Adopt `person_parent_map`: a materialized SCD2 cache of direct edges,
+Adopt `org_chart`: a materialized SCD2 cache of direct edges,
 rebuilt from `persons` by the Python seeder
 (`seed-persons-from-identity-input.py` step 9) using the same
 two-table-swap pattern as `account_person_map`. The rebuild sources
@@ -109,7 +109,7 @@ edges from a UNION of two queries:
    JOIN's right side picks one `person_id` per (tenant, email) via
    `ROW_NUMBER() OVER (...) WHERE rn=1` ordered by `created_at DESC`
    so pending-iresolution accumulation cannot break the UNIQUE key on
-   `person_parent_map`. Source 1 takes precedence when both sources
+   `org_chart`. Source 1 takes precedence when both sources
    have a row for the same partition (NOT EXISTS guard in Source 2).
 
 **Source 1 precedence is per-partition, not per-period.** The
@@ -133,7 +133,7 @@ source_id, person_id) partition. An active interval starts at an
 observation marking the child Active and ends at the next observation
 marking the child Inactive/Terminated (or NULL if the child is still
 active). Each Active->Inactive->Active cycle in the source data
-produces an additional `person_parent_map` row for the same
+produces an additional `org_chart` row for the same
 (child, parent, source) — the SCD2 history honestly reflects the
 re-activation rather than papering over the gap.
 
@@ -173,7 +173,7 @@ handling.
 future source emits multiple supervisors per employee in the same
 source instance (matrix orgs, dotted-line + solid-line managers),
 the schema can be promoted to multi-parent by one ALTER:
-`ALTER TABLE person_parent_map DROP PRIMARY KEY, ADD PRIMARY KEY
+`ALTER TABLE org_chart DROP PRIMARY KEY, ADD PRIMARY KEY
 (insight_tenant_id, insight_source_type, insight_source_id,
 child_person_id, parent_person_id, valid_from)`. The read API
 (`IPersonsReader.GetCurrentParentsAsync` / `GetCurrentChildrenAsync`)
@@ -192,10 +192,10 @@ detected here; the Phase-3 `/v1/subchart/{person_id}?depth=N`
 endpoint will bound recursion by `depth` so unbounded walks
 become structurally impossible regardless of source data quality.
 
-Schema (`Migrations/003_person_parent_map.sql`):
+Schema (`Migrations/003_org_chart.sql`):
 
 ```sql
-CREATE TABLE person_parent_map (
+CREATE TABLE org_chart (
     insight_tenant_id   BINARY(16) NOT NULL,
     insight_source_type VARCHAR(100) NOT NULL,
     insight_source_id   BINARY(16) NOT NULL,
@@ -270,7 +270,7 @@ pending-iresolution duplicates.
 - On a first-run cluster the rebuild now produces a meaningful
   number of edges immediately — every BambooHR employee with a
   `supervisorEmail` that resolves to another BambooHR employee
-  becomes a current edge in `person_parent_map`.
+  becomes a current edge in `org_chart`.
 - Source 1 currently contributes zero rows but the path is wired;
   when the reconciliation service ships, edges it writes via
   `parent_person_id` automatically take precedence over Source 2 by
@@ -283,11 +283,11 @@ pending-iresolution duplicates.
   half-truths.
 - The .NET service does not own the rebuild path; it only reads via
   `IPersonsReader.GetCurrentParentsAsync` and `GetCurrentChildrenAsync`,
-  backed by `SqlParentMap` SELECTs over the `idx_current_parent` /
+  backed by `SqlOrgChart` SELECTs over the `idx_current_parent` /
   `idx_current_children` indexes.
 - SCD2 history is preserved indefinitely. A future GC policy may
   trim closed edges older than retention `T`; not in Phase 1 scope.
-- Drift between `persons` and `person_parent_map` is possible if a
+- Drift between `persons` and `org_chart` is possible if a
   writer bypasses the rebuild path. Mitigation: a periodic Argo
   CronWorkflow can run the rebuild as an integrity check (out of
   Phase-1 scope; CronWorkflow definition is a follow-up).
@@ -295,7 +295,7 @@ pending-iresolution duplicates.
 ### Confirmation
 
 Confirmed by integration tests in
-`Insight.Identity.Tests.Integration/PersonParentMapTests.cs`:
+`Insight.Identity.Tests.Integration/OrgChartTests.cs`:
 
 Reader correctness (six baseline tests):
 - `GetCurrentParents_returns_one_edge_per_source_instance` — a person
@@ -411,6 +411,6 @@ historical edges (deactivated and not re-activated).
 
 ## Traceability
 
-- [`cpt-insightspec-fr-identity-parent-map-table`](../PRD.md#materialised-parentchild-edge-cache)
-- [`cpt-insightspec-fr-identity-parent-map-rebuild`](../PRD.md#rebuild-edges-from-persons-deterministically)
-- [`cpt-insightspec-fr-identity-parent-map-read`](../PRD.md#read-current-parent-and-children-edges)
+- [`cpt-insightspec-fr-identity-org-chart-table`](../PRD.md#materialised-parentchild-edge-cache)
+- [`cpt-insightspec-fr-identity-org-chart-rebuild`](../PRD.md#rebuild-edges-from-persons-deterministically)
+- [`cpt-insightspec-fr-identity-org-chart-read`](../PRD.md#read-current-parent-and-children-edges)

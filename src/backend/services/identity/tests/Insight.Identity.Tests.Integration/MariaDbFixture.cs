@@ -40,11 +40,11 @@ public sealed class MariaDbFixture : IAsyncLifetime
     {
         await using var conn = new MySqlConnection(ConnectionString);
         await conn.OpenAsync().ConfigureAwait(false);
-        // `person_parent_map` references no tenant of its own — its rows
+        // `org_chart` references no tenant of its own — its rows
         // are derived from persons by the seeder, so clearing both keeps
         // each test starting from an empty graph regardless of what the
         // previous test inserted.
-        await using (var cmd = new MySqlCommand("DELETE FROM person_parent_map", conn))
+        await using (var cmd = new MySqlCommand("DELETE FROM org_chart", conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand("DELETE FROM persons", conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
@@ -56,7 +56,7 @@ public sealed class MariaDbFixture : IAsyncLifetime
         await conn.OpenAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand(PersonsDdl, conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        await using (var cmd = new MySqlCommand(PersonParentMapDdl, conn))
+        await using (var cmd = new MySqlCommand(OrgChartDdl, conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
@@ -90,10 +90,10 @@ public sealed class MariaDbFixture : IAsyncLifetime
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """;
 
-    // Mirror of Migrations/003_person_parent_map.sql. Kept inline here
+    // Mirror of Migrations/003_org_chart.sql. Kept inline here
     // so the fixture stays self-contained (no DbUp at test start).
-    private const string PersonParentMapDdl = """
-        CREATE TABLE IF NOT EXISTS person_parent_map (
+    private const string OrgChartDdl = """
+        CREATE TABLE IF NOT EXISTS org_chart (
             insight_tenant_id BINARY(16) NOT NULL,
             insight_source_type VARCHAR(100) NOT NULL,
             insight_source_id BINARY(16) NOT NULL,

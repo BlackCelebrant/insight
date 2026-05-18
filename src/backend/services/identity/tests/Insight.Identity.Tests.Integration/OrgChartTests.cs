@@ -7,7 +7,7 @@ using Xunit;
 namespace Insight.Identity.Tests.Integration;
 
 /// <summary>
-/// Integration tests for <c>person_parent_map</c> reads.
+/// Integration tests for <c>org_chart</c> reads.
 /// Phase 1 of cyberfabric/cyber-insight#348 — verifies that
 /// <see cref="PersonsRepository.GetCurrentParentsAsync"/> and
 /// <see cref="PersonsRepository.GetCurrentChildrenAsync"/> return the
@@ -16,7 +16,7 @@ namespace Insight.Identity.Tests.Integration;
 /// domain shape. No Phase-2 API surface yet.
 /// </summary>
 [Collection(MariaDbCollection.Name)]
-public sealed class PersonParentMapTests : IAsyncLifetime
+public sealed class OrgChartTests : IAsyncLifetime
 {
     private static readonly Guid TenantId       = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid OtherTenantId  = Guid.Parse("99999999-9999-9999-9999-999999999999");
@@ -31,7 +31,7 @@ public sealed class PersonParentMapTests : IAsyncLifetime
     private readonly MariaDbFixture _fixture;
     private PersonsRepository? _repo;
 
-    public PersonParentMapTests(MariaDbFixture fixture) => _fixture = fixture;
+    public OrgChartTests(MariaDbFixture fixture) => _fixture = fixture;
 
     public async Task InitializeAsync()
     {
@@ -197,7 +197,7 @@ public sealed class PersonParentMapTests : IAsyncLifetime
         await using var conn = new MySqlConnection(_fixture.ConnectionString);
         await conn.OpenAsync().ConfigureAwait(false);
         const string sql = """
-            INSERT INTO person_parent_map
+            INSERT INTO org_chart
                 (insight_tenant_id, insight_source_type, insight_source_id,
                  child_person_id, parent_person_id, author_person_id, reason,
                  valid_from, valid_to)

@@ -87,37 +87,37 @@ public sealed class PersonsRepository : IPersonsReader
         return ids;
     }
 
-    public Task<IReadOnlyList<PersonParentEdge>> GetCurrentParentsAsync(
+    public Task<IReadOnlyList<OrgChartEdge>> GetCurrentParentsAsync(
         Guid tenantId,
         Guid childPersonId,
         CancellationToken cancellationToken)
         => ReadEdgesAsync(
-            SqlParentMap.CurrentParentsForChild,
+            SqlOrgChart.CurrentParentsForChild,
             tenantId,
             ("@child_person_id", childPersonId),
             cancellationToken);
 
-    public Task<IReadOnlyList<PersonParentEdge>> GetCurrentChildrenAsync(
+    public Task<IReadOnlyList<OrgChartEdge>> GetCurrentChildrenAsync(
         Guid tenantId,
         Guid parentPersonId,
         CancellationToken cancellationToken)
         => ReadEdgesAsync(
-            SqlParentMap.CurrentChildrenForParent,
+            SqlOrgChart.CurrentChildrenForParent,
             tenantId,
             ("@parent_person_id", parentPersonId),
             cancellationToken);
 
     /// <summary>
-    /// Shared reader for the two <c>person_parent_map</c> SELECTs: the
+    /// Shared reader for the two <c>org_chart</c> SELECTs: the
     /// SQL shape, projection, and binary-to-Guid conversion are
     /// identical — only the WHERE-bound parameter differs (child vs
     /// parent). Keeping one body avoids drift between the two readers.
     /// Unlike <see cref="GetDirectSubordinateIdsAsync"/>, both bound
-    /// values here are BINARY(16) — `person_parent_map` stores person
+    /// values here are BINARY(16) — `org_chart` stores person
     /// ids in the same binary form as the rest of the schema (the
     /// textual `value_id` form is a `persons`-only quirk per ADR-0007).
     /// </summary>
-    private async Task<IReadOnlyList<PersonParentEdge>> ReadEdgesAsync(
+    private async Task<IReadOnlyList<OrgChartEdge>> ReadEdgesAsync(
         string sql,
         Guid tenantId,
         (string name, Guid value) bound,
@@ -129,13 +129,13 @@ public sealed class PersonsRepository : IPersonsReader
         cmd.Parameters.AddWithValue(bound.name, bound.value.ToByteArray(bigEndian: true));
 
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        var edges = new List<PersonParentEdge>();
+        var edges = new List<OrgChartEdge>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var childBytes  = (byte[])reader["child_person_id"];
             var parentBytes = (byte[])reader["parent_person_id"];
             var sourceBytes = (byte[])reader["insight_source_id"];
-            edges.Add(new PersonParentEdge(
+            edges.Add(new OrgChartEdge(
                 InsightSourceType: reader.GetString("insight_source_type"),
                 InsightSourceId:   new Guid(sourceBytes, bigEndian: true),
                 ChildPersonId:     new Guid(childBytes,  bigEndian: true),

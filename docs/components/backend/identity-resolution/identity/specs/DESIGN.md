@@ -56,7 +56,7 @@ Architecture-shaping decisions are captured as ADRs in
 - [`cpt-insightspec-adr-0006-display-name-split-fallback`](ADR/0006-display-name-split-fallback.md) — Display-Name Split Fallback.
 - [`cpt-insightspec-adr-0007-value-type-routing`](ADR/0007-value-type-routing.md) — `value_type` Routing.
 - [`cpt-insightspec-adr-0008-bamboohr-identity-inputs-extension`](ADR/0008-bamboohr-identity-inputs-extension.md) — Extend BambooHR `identity_inputs`.
-- [`cpt-insightspec-adr-0010-person-parent-map-cache`](ADR/0010-person-parent-map-cache.md) — Materialised SCD2 cache for person parent/child edges.
+- [`cpt-insightspec-adr-0010-org-chart-cache`](ADR/0010-org-chart-cache.md) — Materialised SCD2 cache for person parent/child edges (`org_chart`).
 
 #### Functional Drivers
 
@@ -70,9 +70,9 @@ Architecture-shaping decisions are captured as ADRs in
 | [`cpt-insightspec-fr-identity-routing-lowercase`](PRD.md#lowercase-email-at-the-boundary) | `PersonLookupService.GetByEmailAsync` calls `email.Trim().ToLowerInvariant()` before the repository call. |
 | [`cpt-insightspec-fr-identity-routing-name-split`](PRD.md#display-name-split-fallback) | `DisplayNameSplitter` runs after assembly when both `first_name` and `last_name` observations are missing. |
 | [`cpt-insightspec-fr-identity-migrations-startup`](PRD.md#service-owned-migrations-at-startup) | `Program.cs` calls `MigrationRunner.Run` (DbUp + MySql adapter) before `app.RunAsync()`; embedded SQL resources under `Migrations/`. |
-| [`cpt-insightspec-fr-identity-parent-map-table`](PRD.md#materialised-parentchild-edge-cache) | `Migrations/003_person_parent_map.sql` adds the SCD2 edge table with PK `(tenant, source_type, source_id, child, valid_from)`, CHECK `no_self_loop`, and indexes on current-parent / current-children / cross-source views; ADR-0010 records the design decision. |
-| [`cpt-insightspec-fr-identity-parent-map-rebuild`](PRD.md#rebuild-edges-from-persons-deterministically) | `seed-persons-from-identity-input.py` step 9 builds `person_parent_map_next` from a UNION of `value_type='parent_person_id'` (Source 1, future reconciliation) and `value_type='parent_email'` JOINed to the latest `value_type='email'` observation per `(tenant, value_id)` partition (Source 2, current pipeline); Source 1 wins via NOT EXISTS guard. Step 5 sorts accounts BambooHR-first so the canonical `supervisorEmail` source establishes `person_id`s before downstream connectors. Source 2 intersects each `parent_email` period with the child's **active intervals** derived from `value_type='status'` observations (Active/Inactive/Terminated, with LAG to collapse duplicates and LEAD to compute interval ends); children without any status observation get a synthetic [-inf,+inf) interval. Re-activation (Inactive -> Active) produces a fresh row rather than reopening the closed one — SCD2 history is preserved. Two-table swap via `RENAME` mirrors step 8. Parent_emails with no email-bearer in `persons` are skipped and counted in the seeder log (no stubs created — see ADR-0010). Post-swap two-hop cycle detection self-joins CURRENT edges and emits a WARN line if `(A->B)` and `(B->A)` co-exist; deeper cycles are bounded structurally by the Phase-3 subchart endpoint's depth parameter. |
-| [`cpt-insightspec-fr-identity-parent-map-read`](PRD.md#read-current-parent-and-children-edges) | `IPersonsReader.GetCurrentParentsAsync` / `GetCurrentChildrenAsync` issue `SELECT ... WHERE child_person_id=@c AND valid_to IS NULL` (respectively `parent_person_id=@p`); `SqlParentMap` holds both query strings, `PersonsRepository.ReadEdgesAsync` is the shared row→`PersonParentEdge` reader. |
+| [`cpt-insightspec-fr-identity-org-chart-table`](PRD.md#materialised-parentchild-edge-cache) | `Migrations/003_org_chart.sql` adds the SCD2 edge table with PK `(tenant, source_type, source_id, child, valid_from)`, CHECK `no_self_loop`, and indexes on current-parent / current-children / cross-source views; ADR-0010 records the design decision. |
+| [`cpt-insightspec-fr-identity-org-chart-rebuild`](PRD.md#rebuild-edges-from-persons-deterministically) | `seed-persons-from-identity-input.py` step 9 builds `org_chart_next` from a UNION of `value_type='parent_person_id'` (Source 1, future reconciliation) and `value_type='parent_email'` JOINed to the latest `value_type='email'` observation per `(tenant, value_id)` partition (Source 2, current pipeline); Source 1 wins via NOT EXISTS guard. Step 5 sorts accounts BambooHR-first so the canonical `supervisorEmail` source establishes `person_id`s before downstream connectors. Source 2 intersects each `parent_email` period with the child's **active intervals** derived from `value_type='status'` observations (Active/Inactive/Terminated, with LAG to collapse duplicates and LEAD to compute interval ends); children without any status observation get a synthetic [-inf,+inf) interval. Re-activation (Inactive -> Active) produces a fresh row rather than reopening the closed one — SCD2 history is preserved. Two-table swap via `RENAME` mirrors step 8. Parent_emails with no email-bearer in `persons` are skipped and counted in the seeder log (no stubs created — see ADR-0010). Post-swap two-hop cycle detection self-joins CURRENT edges and emits a WARN line if `(A->B)` and `(B->A)` co-exist; deeper cycles are bounded structurally by the Phase-3 subchart endpoint's depth parameter. |
+| [`cpt-insightspec-fr-identity-org-chart-read`](PRD.md#read-current-parent-and-children-edges) | `IPersonsReader.GetCurrentParentsAsync` / `GetCurrentChildrenAsync` issue `SELECT ... WHERE child_person_id=@c AND valid_to IS NULL` (respectively `parent_person_id=@p`); `SqlOrgChart` holds both query strings, `PersonsRepository.ReadEdgesAsync` is the shared row→`OrgChartEdge` reader. |
 
 #### NFR Allocation
 
@@ -526,11 +526,11 @@ Phase 1 — the seed pipeline rebuilds it as an SCD2 cache from
 Future Phase 2 lookups will use it for "as-of" account → person
 binding queries.
 
-#### Table: `person_parent_map` (MariaDB)
+#### Table: `org_chart` (MariaDB)
 
-- [ ] `p1` - **ID**: `cpt-insightspec-dbtable-identity-person-parent-map`
+- [ ] `p1` - **ID**: `cpt-insightspec-dbtable-identity-org-chart`
 
-Defined in `Insight.Identity.Infrastructure/Migrations/003_person_parent_map.sql`
+Defined in `Insight.Identity.Infrastructure/Migrations/003_org_chart.sql`
 (see ADR-0010). The service migrates and reads the table — the
 seed pipeline (`seed-persons-from-identity-input.py` step 9)
 rebuilds it as an SCD2 cache of direct parent->child edges
@@ -608,9 +608,9 @@ Every log line is structured JSON via `CompactJsonFormatter` with:
 | `cpt-insightspec-fr-identity-routing-lowercase` | §1.2 Functional Drivers; §3.2 Domain `PersonLookupService`. |
 | `cpt-insightspec-fr-identity-routing-name-split` | §1.2 Functional Drivers; §3.2 Domain `DisplayNameSplitter`. |
 | `cpt-insightspec-fr-identity-migrations-startup` | §1.2 Functional Drivers; §3.6 Sequence "Startup with migration". |
-| `cpt-insightspec-fr-identity-parent-map-table` | §1.2 Functional Drivers; §3.7 Table `person_parent_map`; ADR-0010. |
-| `cpt-insightspec-fr-identity-parent-map-rebuild` | §1.2 Functional Drivers; rebuild step in seeder (`seed-persons-from-identity-input.py` step 9). |
-| `cpt-insightspec-fr-identity-parent-map-read` | §1.2 Functional Drivers; §3.7 read paths note; `SqlParentMap` + `PersonsRepository.ReadEdgesAsync`. |
+| `cpt-insightspec-fr-identity-org-chart-table` | §1.2 Functional Drivers; §3.7 Table `org_chart`; ADR-0010. |
+| `cpt-insightspec-fr-identity-org-chart-rebuild` | §1.2 Functional Drivers; rebuild step in seeder (`seed-persons-from-identity-input.py` step 9). |
+| `cpt-insightspec-fr-identity-org-chart-read` | §1.2 Functional Drivers; §3.7 read paths note; `SqlOrgChart` + `PersonsRepository.ReadEdgesAsync`. |
 | `cpt-insightspec-nfr-identity-latency` | §1.2 NFR Allocation; §3.7 covered index. |
 | `cpt-insightspec-nfr-identity-memory` | §1.2 NFR Allocation; §2.1 Principle "Observation log, not relational tree". |
 | `cpt-insightspec-nfr-identity-logging-pii` | §1.2 NFR Allocation; §4.2 Logging shape. |

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Seed: identity.identity_inputs (ClickHouse) -> persons +
-account_person_map + person_parent_map (MariaDB).
+account_person_map + org_chart (MariaDB).
 
 Writes observations from `identity_inputs` into `persons`, minting
 stable `person_id`s as needed, then rebuilds `account_person_map`
-(SCD2 source-account -> person_id binding) and `person_parent_map`
+(SCD2 source-account -> person_id binding) and `org_chart`
 (SCD2 parent -> child edges) from scratch.
 
-`person_parent_map` derives edges from two sources, in order of
+`org_chart` derives edges from two sources, in order of
 priority:
 
 1. `value_type='parent_person_id'` observations (already-resolved
@@ -277,7 +277,7 @@ def route_value(value_type: str, value: str) -> tuple[str | None, str | None, st
 
 # -- Main -----------------------------------------------------------------
 def main():
-    print("=== Seed: identity_inputs -> MariaDB persons + account_person_map + person_parent_map ===")
+    print("=== Seed: identity_inputs -> MariaDB persons + account_person_map + org_chart ===")
 
     # 1. Read all identity_inputs rows from ClickHouse.
     #    ORDER BY _synced_at DESC within a source-account so that the
@@ -639,7 +639,7 @@ def main():
     cursor.execute("DROP TABLE account_person_map_old")
     conn.commit()
 
-    # 9. Rebuild person_parent_map from persons (SCD2 parent->child edges)
+    # 9. Rebuild org_chart from persons (SCD2 parent->child edges)
     #    via the same two-table swap pattern as step 8. Edges come from
     #    two sources, in priority order:
     #
@@ -653,7 +653,7 @@ def main():
     #    LATEST email observation per (tenant, email) partition (the
     #    inner ROW_NUMBER subquery picks one person_id per email so
     #    pending-iresolution accumulation cannot trigger UNIQUE PK
-    #    conflicts on person_parent_map_next).
+    #    conflicts on org_chart_next).
     #
     #    Source 1 wins when both have a row for the same partition
     #    (NOT EXISTS guard in Source 2).
@@ -666,7 +666,7 @@ def main():
     #    observation and the next Inactive/Terminated observation (or
     #    NULL if still active). A re-activation (Inactive -> Active)
     #    opens a new active interval, which produces a second
-    #    person_parent_map row for the same (child, parent, source)
+    #    org_chart row for the same (child, parent, source)
     #    when the parent_email observation predates the deactivation
     #    and the rebound never happened.
     #
@@ -691,12 +691,12 @@ def main():
     #    * Malformed parent_person_id values: REGEXP guards Source 1
     #      against non-UUID strings that would crash UNHEX or produce
     #      nonsense binary.
-    print("  Rebuilding person_parent_map from persons (parent_person_id + parent_email -> email JOIN, with active intervals)...")
-    cursor.execute("DROP TABLE IF EXISTS person_parent_map_next")
-    cursor.execute("CREATE TABLE person_parent_map_next LIKE person_parent_map")
+    print("  Rebuilding org_chart from persons (parent_person_id + parent_email -> email JOIN, with active intervals)...")
+    cursor.execute("DROP TABLE IF EXISTS org_chart_next")
+    cursor.execute("CREATE TABLE org_chart_next LIKE org_chart")
     cursor.execute(
         """
-        INSERT INTO person_parent_map_next
+        INSERT INTO org_chart_next
             (insight_tenant_id, insight_source_type, insight_source_id,
              child_person_id, parent_person_id,
              author_person_id, reason, valid_from, valid_to)
@@ -876,13 +876,13 @@ def main():
           )
         """
     )
-    cursor.execute("DROP TABLE IF EXISTS person_parent_map_old")
+    cursor.execute("DROP TABLE IF EXISTS org_chart_old")
     cursor.execute(
         "RENAME TABLE "
-        "  person_parent_map      TO person_parent_map_old, "
-        "  person_parent_map_next TO person_parent_map"
+        "  org_chart      TO org_chart_old, "
+        "  org_chart_next TO org_chart"
     )
-    cursor.execute("DROP TABLE person_parent_map_old")
+    cursor.execute("DROP TABLE org_chart_old")
     conn.commit()
 
     # Diagnostics: how many parent observations each source contributed,
@@ -912,9 +912,9 @@ def main():
     parent_email_unresolved = cursor.fetchone()[0]
 
     # How many current vs historical edges total
-    cursor.execute("SELECT COUNT(*) FROM person_parent_map WHERE valid_to IS NULL")
+    cursor.execute("SELECT COUNT(*) FROM org_chart WHERE valid_to IS NULL")
     current_edges = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM person_parent_map WHERE valid_to IS NOT NULL")
+    cursor.execute("SELECT COUNT(*) FROM org_chart WHERE valid_to IS NOT NULL")
     historical_edges = cursor.fetchone()[0]
 
     # How many distinct children currently have NO edge but DID have one
@@ -922,13 +922,13 @@ def main():
     # source. Useful as a "deactivation pressure" gauge.
     cursor.execute(
         """
-        SELECT COUNT(DISTINCT child_person_id) FROM person_parent_map ppm
+        SELECT COUNT(DISTINCT child_person_id) FROM org_chart oc
         WHERE NOT EXISTS (
-            SELECT 1 FROM person_parent_map cur
-            WHERE cur.insight_tenant_id   = ppm.insight_tenant_id
-              AND cur.insight_source_type = ppm.insight_source_type
-              AND cur.insight_source_id   = ppm.insight_source_id
-              AND cur.child_person_id     = ppm.child_person_id
+            SELECT 1 FROM org_chart cur
+            WHERE cur.insight_tenant_id   = oc.insight_tenant_id
+              AND cur.insight_source_type = oc.insight_source_type
+              AND cur.insight_source_id   = oc.insight_source_id
+              AND cur.child_person_id     = oc.child_person_id
               AND cur.valid_to IS NULL
         )
         """
@@ -958,22 +958,22 @@ def main():
     # recursive CTE traversal.
     cursor.execute(
         """
-        SELECT COUNT(*) FROM person_parent_map ppm
+        SELECT COUNT(*) FROM org_chart oc
         WHERE valid_to IS NULL
           AND EXISTS (
-              SELECT 1 FROM person_parent_map anc
+              SELECT 1 FROM org_chart anc
               WHERE anc.valid_to IS NULL
-                AND anc.insight_tenant_id   = ppm.insight_tenant_id
-                AND anc.insight_source_type = ppm.insight_source_type
-                AND anc.insight_source_id   = ppm.insight_source_id
-                AND anc.child_person_id     = ppm.parent_person_id
-                AND anc.parent_person_id    = ppm.child_person_id
+                AND anc.insight_tenant_id   = oc.insight_tenant_id
+                AND anc.insight_source_type = oc.insight_source_type
+                AND anc.insight_source_id   = oc.insight_source_id
+                AND anc.child_person_id     = oc.parent_person_id
+                AND anc.parent_person_id    = oc.child_person_id
           )
         """
     )
     two_hop_cycles = cursor.fetchone()[0]
     if two_hop_cycles:
-        print(f"  WARN: person_parent_map has {two_hop_cycles} two-hop cycles -- review source data")
+        print(f"  WARN: org_chart has {two_hop_cycles} two-hop cycles -- review source data")
 
     # Summary
     cursor.execute("""
@@ -994,11 +994,11 @@ def main():
     current_map = cursor.fetchone()[0]
     print(f"    account_person_map rows: {total_map} ({current_map} current, {total_map - current_map} historical)")
 
-    cursor.execute("SELECT COUNT(*) FROM person_parent_map")
+    cursor.execute("SELECT COUNT(*) FROM org_chart")
     total_edges = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM person_parent_map WHERE valid_to IS NULL")
+    cursor.execute("SELECT COUNT(*) FROM org_chart WHERE valid_to IS NULL")
     current_edges = cursor.fetchone()[0]
-    print(f"    person_parent_map edges: {total_edges} ({current_edges} current, {total_edges - current_edges} historical)")
+    print(f"    org_chart edges: {total_edges} ({current_edges} current, {total_edges - current_edges} historical)")
 
     conn.close()
     print("\n=== Seed complete ===")

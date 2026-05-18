@@ -1,7 +1,7 @@
 namespace Insight.Identity.Infrastructure.MariaDb;
 
 /// <summary>
-/// SQL statements against <c>person_parent_map</c>, the SCD2 cache of
+/// SQL statements against <c>org_chart</c>, the SCD2 cache of
 /// parent->child edges derived from <c>persons</c> observations with
 /// <c>value_type='parent_person_id'</c>. Phase 1 of
 /// cyberfabric/cyber-insight#348.
@@ -17,7 +17,7 @@ namespace Insight.Identity.Infrastructure.MariaDb;
 /// this file because the service does not own the rebuild path — it
 /// only reads the materialized result.
 /// </summary>
-internal static class SqlParentMap
+internal static class SqlOrgChart
 {
     /// <summary>
     /// Current parent edges for one child, across every source instance
@@ -32,7 +32,7 @@ internal static class SqlParentMap
             child_person_id,
             parent_person_id,
             valid_from
-        FROM person_parent_map
+        FROM org_chart
         WHERE insight_tenant_id = @tenant_id
           AND child_person_id   = @child_person_id
           AND valid_to IS NULL
@@ -51,7 +51,7 @@ internal static class SqlParentMap
             child_person_id,
             parent_person_id,
             valid_from
-        FROM person_parent_map
+        FROM org_chart
         WHERE insight_tenant_id  = @tenant_id
           AND parent_person_id   = @parent_person_id
           AND valid_to IS NULL
