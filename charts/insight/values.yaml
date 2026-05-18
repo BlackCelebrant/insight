@@ -139,8 +139,8 @@ ingestion:
   # `serviceaccount "argo-workflow" not found`.
   templates:
     enabled: true
-  toolboxImage: "ghcr.io/cyberfabric/insight-toolbox:2026.05.13.11.50-ac69f74" # e.g. "ghcr.io/cyberfabric/insight-toolbox:2026.04.28.10.34-b08b460"
-  jiraEnrichImage: "" # e.g. "ghcr.io/cyberfabric/insight-jira-enrich:2026.04.21.09.37-ccb013f"
+  toolboxImage: "ghcr.io/cyberfabric/insight-toolbox:2026.05.14.09.08-6babdf9" # e.g. "ghcr.io/cyberfabric/insight-toolbox:2026.04.28.10.34-b08b460"
+  jiraEnrichImage: "ghcr.io/cyberfabric/insight-jira-enrich:2026.05.14.09.08-6babdf9" # e.g. "ghcr.io/cyberfabric/insight-jira-enrich:2026.04.21.09.37-ccb013f"
   # Reconcile loop: descriptor-driven Airbyte connector reconciliation,
   # cron-scheduled inside the cluster (see templates/ingestion/reconcile-cron.yaml).
   reconcile:
@@ -151,6 +151,20 @@ ingestion:
     argoInstanceId: "" # Optional. Set only if the cluster's Argo workflow controller runs with `instanceID:` configured (e.g. "argo-workflows-insight" on dev-vhc). Empty leaves the controller-instanceid label off — controllers without instanceID accept that.
     tenantId: "" # Set to the Insight tenant slug (used in source/connection names per ADR-0005). No silent default.
     logs:
+      # `persistent: false` → reconcile-loop CronWorkflow pods write logs
+      # to an emptyDir mounted at /var/log/insight; logs survive only
+      # until pod GC. Sufficient for dev/test where the Argo controller's
+      # pod-log archive is the source of record for debugging.
+      #
+      # `persistent: true` → chart provisions a PVC at deploy time.
+      # REQUIREMENT: the StorageClass referenced (either explicit
+      # `storageClass` or the cluster default) MUST use
+      # `volumeBindingMode: Immediate` — workflow pods only exist while
+      # a Workflow is running, so a `WaitForFirstConsumer` class leaves
+      # the PVC Pending forever, blocking `helm --wait`. Production
+      # operators wanting cross-run log persistence should either
+      # provide an Immediate-binding StorageClass or accept emptyDir.
+      persistent: false
       size: 5Gi
       storageClass: ""
     resources:
@@ -415,7 +429,7 @@ identity:
 frontend:
   replicaCount: 1
   image:
-    repository: ghcr.io/cyberfabric/insight-front
+    repository: ghcr.io/cyberfabric/cyber-insight-front
     tag: "" # MUST be set (e.g. "0.1.0")
     pullPolicy: IfNotPresent
   resources:
