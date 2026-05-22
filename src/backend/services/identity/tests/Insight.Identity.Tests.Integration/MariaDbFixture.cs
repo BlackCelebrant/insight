@@ -48,6 +48,14 @@ public sealed class MariaDbFixture : IAsyncLifetime
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand("DELETE FROM persons", conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        // #346 step-1 RBAC tables. `roles` is NOT cleared here — the
+        // admin seed row is part of the schema-bootstrap contract and
+        // every test depends on it being there. Per-test rows go into
+        // `visibility` and `person_roles`.
+        await using (var cmd = new MySqlCommand("DELETE FROM visibility", conn))
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await using (var cmd = new MySqlCommand("DELETE FROM person_roles", conn))
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
     private async Task ApplySchemaAsync()
@@ -57,6 +65,14 @@ public sealed class MariaDbFixture : IAsyncLifetime
         await using (var cmd = new MySqlCommand(PersonsDdl, conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand(OrgChartDdl, conn))
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await using (var cmd = new MySqlCommand(VisibilityDdl, conn))
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await using (var cmd = new MySqlCommand(RolesDdl, conn))
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await using (var cmd = new MySqlCommand(PersonRolesDdl, conn))
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await using (var cmd = new MySqlCommand(AdminRoleSeed, conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
@@ -88,6 +104,57 @@ public sealed class MariaDbFixture : IAsyncLifetime
             INDEX idx_tenant_person (insight_tenant_id, person_id),
             INDEX idx_source (insight_source_type, insight_source_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """;
+
+    // Mirrors of Migrations/006_visibility.sql + 007_roles.sql + 008_person_roles.sql.
+    // Kept inline so the fixture stays self-contained (no DbUp at test start).
+    private const string VisibilityDdl = """
+        CREATE TABLE IF NOT EXISTS visibility (
+            visibility_id     BINARY(16) NOT NULL,
+            insight_tenant_id BINARY(16) NOT NULL,
+            viewer_person_id  BINARY(16) NOT NULL,
+            viewed_person_id  BINARY(16) NULL,
+            valid_from        DATETIME(6) NOT NULL,
+            valid_to          DATETIME(6) NULL,
+            author_person_id  BINARY(16) NOT NULL,
+            reason            VARCHAR(500) NOT NULL DEFAULT '',
+            created_at        DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (visibility_id),
+            INDEX idx_viewer_current (insight_tenant_id, viewer_person_id, valid_to)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """;
+
+    private const string RolesDdl = """
+        CREATE TABLE IF NOT EXISTS roles (
+            role_id BINARY(16) NOT NULL,
+            name    VARCHAR(64) NOT NULL,
+            PRIMARY KEY (role_id),
+            UNIQUE KEY uk_name (name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """;
+
+    private const string PersonRolesDdl = """
+        CREATE TABLE IF NOT EXISTS person_roles (
+            person_role_id    BINARY(16) NOT NULL,
+            insight_tenant_id BINARY(16) NOT NULL,
+            person_id         BINARY(16) NOT NULL,
+            role_id           BINARY(16) NOT NULL,
+            valid_from        DATETIME(6) NOT NULL,
+            valid_to          DATETIME(6) NULL,
+            author_person_id  BINARY(16) NOT NULL,
+            reason            VARCHAR(500) NOT NULL DEFAULT '',
+            created_at        DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (person_role_id),
+            INDEX idx_person_current (insight_tenant_id, person_id, role_id, valid_to),
+            INDEX idx_role_current   (insight_tenant_id, role_id, valid_to)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """;
+
+    // Pinned UUID — must match Domain.Services.Roles.Admin and the seed in 007_roles.sql.
+    private const string AdminRoleSeed = """
+        INSERT INTO roles (role_id, name)
+        VALUES (UNHEX(REPLACE('a4d11000-0000-4000-8000-000000000001', '-', '')), 'admin')
+        ON DUPLICATE KEY UPDATE name = name
         """;
 
     // Mirror of Migrations/003_org_chart.sql. Kept inline here
