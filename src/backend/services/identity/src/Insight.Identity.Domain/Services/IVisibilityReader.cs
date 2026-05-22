@@ -16,18 +16,17 @@ public interface IVisibilityReader
     /// visibility CTE uses as its seed set together with the viewer's
     /// own <c>person_id</c>.
     /// </summary>
-    Task<IReadOnlyList<VisibilityGrant>> GetActiveGrantsByViewerAsync(
+    Task<IReadOnlyList<Visibility>> GetActiveGrantsByViewerAsync(
         Guid tenantId,
         Guid viewerPersonId,
         CancellationToken cancellationToken);
 }
 
 /// <summary>
-/// One row of the `visibility` table projected into the domain layer.
-/// <see cref="ViewedPersonId"/> is <c>null</c> when the grant covers
-/// the whole tenant tree (whole-tree scope).
+/// One row of the <c>visibility</c> table. <see cref="ViewedPersonId"/>
+/// is <c>null</c> for a whole-tenant-tree grant.
 /// </summary>
-public sealed record VisibilityGrant(
+public sealed record Visibility(
     Guid VisibilityId,
     Guid InsightTenantId,
     Guid ViewerPersonId,
@@ -35,5 +34,5 @@ public sealed record VisibilityGrant(
     DateTime ValidFrom,
     DateTime? ValidTo,
     Guid AuthorPersonId,
-    string Reason,
+    string? Reason,
     DateTime CreatedAt);

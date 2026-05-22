@@ -1,3 +1,4 @@
+using Insight.Identity.Domain.Services;
 using MySqlConnector;
 using Testcontainers.MariaDb;
 using Xunit;
@@ -59,9 +60,12 @@ public sealed class MariaDbFixture : IAsyncLifetime
         await using (var cmd = new MySqlCommand("DELETE FROM person_roles", conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand(
-            "DELETE FROM roles WHERE role_id <> UNHEX(REPLACE('a4d11000-0000-4000-8000-000000000001', '-', ''))",
+            "DELETE FROM roles WHERE role_id <> @admin_id",
             conn))
+        {
+            cmd.Parameters.AddWithValue("@admin_id", Roles.Admin.ToByteArray(bigEndian: true));
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
     }
 
     private async Task ApplySchemaAsync()
@@ -79,7 +83,10 @@ public sealed class MariaDbFixture : IAsyncLifetime
         await using (var cmd = new MySqlCommand(PersonRolesDdl, conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand(AdminRoleSeed, conn))
+        {
+            cmd.Parameters.AddWithValue("@admin_id", Roles.Admin.ToByteArray(bigEndian: true));
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
     }
 
     private const string PersonsDdl = """
@@ -98,8 +105,8 @@ public sealed class MariaDbFixture : IAsyncLifetime
                 GENERATED ALWAYS AS (SHA2(COALESCE(value_id, value_full_text, value), 256)) STORED,
             person_id BINARY(16) NOT NULL,
             author_person_id BINARY(16) NOT NULL,
-            reason TEXT NOT NULL DEFAULT '',
-            created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            reason TEXT NULL,
+            created_at DATETIME(6) NOT NULL DEFAULT (UTC_TIMESTAMP(6)),
             UNIQUE KEY uq_person_observation (
                 insight_tenant_id, person_id, insight_source_type, insight_source_id,
                 value_type, created_at
@@ -123,8 +130,8 @@ public sealed class MariaDbFixture : IAsyncLifetime
             valid_from        DATETIME(6) NOT NULL,
             valid_to          DATETIME(6) NULL,
             author_person_id  BINARY(16) NOT NULL,
-            reason            VARCHAR(500) NOT NULL DEFAULT '',
-            created_at        DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            reason            VARCHAR(500) NULL,
+            created_at        DATETIME(6) NOT NULL DEFAULT (UTC_TIMESTAMP(6)),
             PRIMARY KEY (visibility_id),
             CONSTRAINT chk_visibility_interval
                 CHECK (valid_to IS NULL OR valid_from <= valid_to),
@@ -151,8 +158,8 @@ public sealed class MariaDbFixture : IAsyncLifetime
             valid_from        DATETIME(6) NOT NULL,
             valid_to          DATETIME(6) NULL,
             author_person_id  BINARY(16) NOT NULL,
-            reason            VARCHAR(500) NOT NULL DEFAULT '',
-            created_at        DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            reason            VARCHAR(500) NULL,
+            created_at        DATETIME(6) NOT NULL DEFAULT (UTC_TIMESTAMP(6)),
             PRIMARY KEY (person_role_id),
             CONSTRAINT chk_person_roles_interval
                 CHECK (valid_to IS NULL OR valid_from <= valid_to),
@@ -161,10 +168,10 @@ public sealed class MariaDbFixture : IAsyncLifetime
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """;
 
-    // Pinned UUID — must match Domain.Services.Roles.Admin and the seed in 007_roles.sql.
+    // @admin_id bound at call-site from Domain.Services.Roles.Admin.
     private const string AdminRoleSeed = """
         INSERT INTO roles (role_id, name)
-        VALUES (UNHEX(REPLACE('a4d11000-0000-4000-8000-000000000001', '-', '')), 'admin')
+        VALUES (@admin_id, 'admin')
         ON DUPLICATE KEY UPDATE name = name
         """;
 
@@ -178,9 +185,9 @@ public sealed class MariaDbFixture : IAsyncLifetime
             child_person_id BINARY(16) NOT NULL,
             parent_person_id BINARY(16) NOT NULL,
             author_person_id BINARY(16) NOT NULL,
-            reason VARCHAR(50) NOT NULL,
-            valid_from TIMESTAMP(6) NOT NULL,
-            valid_to TIMESTAMP(6) NULL,
+            reason VARCHAR(50) NULL,
+            valid_from DATETIME(6) NOT NULL,
+            valid_to DATETIME(6) NULL,
             PRIMARY KEY (
                 insight_tenant_id, insight_source_type, insight_source_id,
                 child_person_id, valid_from

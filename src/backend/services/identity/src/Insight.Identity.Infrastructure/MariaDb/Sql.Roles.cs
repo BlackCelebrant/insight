@@ -19,18 +19,15 @@ internal static class SqlRoles
         ORDER BY name
         """;
 
-    // `LIMIT 1` keeps the existence-check cheap even if the index ever
-    // returns more than one matching row (it shouldn't — soft-delete +
-    // INSERT-on-grant means at most one active row per (tenant, person,
-    // role) — but defence in depth).
     public const string HasActivePersonRole = """
-        SELECT 1
-        FROM person_roles
-        WHERE insight_tenant_id = @tenant_id
-          AND person_id         = @person_id
-          AND role_id           = @role_id
-          AND valid_to IS NULL
-        LIMIT 1
+        SELECT EXISTS (
+            SELECT 1
+            FROM person_roles
+            WHERE insight_tenant_id = @tenant_id
+              AND person_id         = @person_id
+              AND role_id           = @role_id
+              AND valid_to IS NULL
+        )
         """;
 
     public const string ActivePersonRolesByPerson = """

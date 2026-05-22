@@ -17,7 +17,7 @@ public sealed class VisibilityRepository : IVisibilityReader
         _factory = factory;
     }
 
-    public async Task<IReadOnlyList<VisibilityGrant>> GetActiveGrantsByViewerAsync(
+    public async Task<IReadOnlyList<Visibility>> GetActiveGrantsByViewerAsync(
         Guid tenantId,
         Guid viewerPersonId,
         CancellationToken cancellationToken)
@@ -28,11 +28,12 @@ public sealed class VisibilityRepository : IVisibilityReader
         cmd.Parameters.AddWithValue("@viewer_person_id", viewerPersonId.ToByteArray(bigEndian: true));
 
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        var list = new List<VisibilityGrant>();
+        var list = new List<Visibility>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var idxViewed = reader.GetOrdinal("viewed_person_id");
-            list.Add(new VisibilityGrant(
+            var idxReason = reader.GetOrdinal("reason");
+            list.Add(new Visibility(
                 VisibilityId:     new Guid((byte[])reader["visibility_id"], bigEndian: true),
                 InsightTenantId:  new Guid((byte[])reader["insight_tenant_id"], bigEndian: true),
                 ViewerPersonId:   new Guid((byte[])reader["viewer_person_id"], bigEndian: true),
@@ -44,7 +45,7 @@ public sealed class VisibilityRepository : IVisibilityReader
                                       ? null
                                       : reader.GetDateTime("valid_to"),
                 AuthorPersonId:   new Guid((byte[])reader["author_person_id"], bigEndian: true),
-                Reason:           reader.GetString("reason"),
+                Reason:           reader.IsDBNull(idxReason) ? null : reader.GetString(idxReason),
                 CreatedAt:        reader.GetDateTime("created_at")));
         }
         return list;

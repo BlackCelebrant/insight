@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS visibility (
     valid_from        DATETIME(6) NOT NULL,
     valid_to          DATETIME(6) NULL,
     author_person_id  BINARY(16) NOT NULL,
-    reason            VARCHAR(500) NOT NULL DEFAULT '',
-    created_at        DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    reason            VARCHAR(500) NULL,
+    created_at        DATETIME(6) NOT NULL DEFAULT (UTC_TIMESTAMP(6)),
 
     PRIMARY KEY (visibility_id),
 

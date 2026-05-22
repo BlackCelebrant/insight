@@ -24,14 +24,14 @@ public interface IPersonRolesReader
     /// All active role grants for one person in one tenant. Empty list
     /// when the person has no roles.
     /// </summary>
-    Task<IReadOnlyList<PersonRoleAssignment>> GetActiveByPersonAsync(
+    Task<IReadOnlyList<PersonRole>> GetActiveByPersonAsync(
         Guid tenantId,
         Guid personId,
         CancellationToken cancellationToken);
 }
 
-/// <summary>One `person_roles` row projected into the domain layer.</summary>
-public sealed record PersonRoleAssignment(
+/// <summary>One row of the <c>person_roles</c> junction.</summary>
+public sealed record PersonRole(
     Guid PersonRoleId,
     Guid InsightTenantId,
     Guid PersonId,
@@ -39,5 +39,5 @@ public sealed record PersonRoleAssignment(
     DateTime ValidFrom,
     DateTime? ValidTo,
     Guid AuthorPersonId,
-    string Reason,
+    string? Reason,
     DateTime CreatedAt);

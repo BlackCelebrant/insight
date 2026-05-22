@@ -61,10 +61,10 @@ public sealed class RolesRepository : IRolesReader, IPersonRolesReader
         cmd.Parameters.AddWithValue("@person_id", personId.ToByteArray(bigEndian: true));
         cmd.Parameters.AddWithValue("@role_id", roleId.ToByteArray(bigEndian: true));
         var raw = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is not null;
+        return Convert.ToBoolean(raw, System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    public async Task<IReadOnlyList<PersonRoleAssignment>> GetActiveByPersonAsync(
+    public async Task<IReadOnlyList<PersonRole>> GetActiveByPersonAsync(
         Guid tenantId,
         Guid personId,
         CancellationToken cancellationToken)
@@ -74,10 +74,11 @@ public sealed class RolesRepository : IRolesReader, IPersonRolesReader
         cmd.Parameters.AddWithValue("@tenant_id", tenantId.ToByteArray(bigEndian: true));
         cmd.Parameters.AddWithValue("@person_id", personId.ToByteArray(bigEndian: true));
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        var list = new List<PersonRoleAssignment>();
+        var list = new List<PersonRole>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            list.Add(new PersonRoleAssignment(
+            var idxReason = reader.GetOrdinal("reason");
+            list.Add(new PersonRole(
                 PersonRoleId:    new Guid((byte[])reader["person_role_id"], bigEndian: true),
                 InsightTenantId: new Guid((byte[])reader["insight_tenant_id"], bigEndian: true),
                 PersonId:        new Guid((byte[])reader["person_id"], bigEndian: true),
@@ -87,7 +88,7 @@ public sealed class RolesRepository : IRolesReader, IPersonRolesReader
                                      ? null
                                      : reader.GetDateTime("valid_to"),
                 AuthorPersonId:  new Guid((byte[])reader["author_person_id"], bigEndian: true),
-                Reason:          reader.GetString("reason"),
+                Reason:          reader.IsDBNull(idxReason) ? null : reader.GetString(idxReason),
                 CreatedAt:       reader.GetDateTime("created_at")));
         }
         return list;
