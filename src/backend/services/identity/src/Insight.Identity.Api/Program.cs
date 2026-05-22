@@ -124,6 +124,14 @@ builder.Services
         };
     });
 
+// Caller resolver — header-driven; api-gateway sets `X-Insight-Person-Id`
+// from the validated JWT subject.
+builder.Services.AddSingleton<ICallerContext, HeaderCallerContext>();
+
+// Composite admin-probe — used by CRUD endpoints on /v1/visibility,
+// /v1/roles, /v1/person-roles to gate by the `admin` role.
+builder.Services.AddSingleton<CallerAdminCheck>();
+
 builder.Services.AddRouting();
 
 var bindAddr = builder.Configuration[$"{AppOptions.SectionName}:bind_addr"]
