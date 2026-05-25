@@ -68,7 +68,7 @@ public sealed class CallerAdminCheckTests
 
     private sealed class StaticCallerContext(Guid? id) : ICallerContext
     {
-        public Guid? Resolve(HttpContext context) => id;
+        public Task<Guid?> ResolveAsync(HttpContext context, CancellationToken cancellationToken) => Task.FromResult(id);
     }
 
     private sealed class StaticTenantContext(Guid? id) : ITenantContext

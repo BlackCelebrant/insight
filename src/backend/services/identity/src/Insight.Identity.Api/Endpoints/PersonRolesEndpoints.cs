@@ -40,7 +40,7 @@ public static class PersonRolesEndpoints
             if (!validation.IsValid) return EndpointHelpers.ValidationFailure(validation);
 
             var tenantId = EndpointHelpers.ResolveTenant(http)!.Value;
-            var callerPersonId = EndpointHelpers.ResolveCaller(http)!.Value;
+            var callerPersonId = (await EndpointHelpers.ResolveCallerAsync(http, ct).ConfigureAwait(false))!.Value;
             var id = await repo.InsertPersonRoleAsync(
                 tenantId, body.PersonId, body.RoleId, body.ValidFrom,
                 callerPersonId, body.Reason, ct).ConfigureAwait(false);
@@ -106,7 +106,7 @@ public static class PersonRolesEndpoints
                     ("person_role_id", id),
                     ("person_id", existing.PersonId),
                     ("role_id", existing.RoleId),
-                    ("author_person_id", EndpointHelpers.ResolveCaller(http)!.Value));
+                    ("author_person_id", (await EndpointHelpers.ResolveCallerAsync(http, ct).ConfigureAwait(false))!.Value));
                 return Results.NoContent();
             }
 

@@ -37,7 +37,7 @@ public static class VisibilityEndpoints
             if (!validation.IsValid) return EndpointHelpers.ValidationFailure(validation);
 
             var tenantId = EndpointHelpers.ResolveTenant(http)!.Value;
-            var callerPersonId = EndpointHelpers.ResolveCaller(http)!.Value;
+            var callerPersonId = (await EndpointHelpers.ResolveCallerAsync(http, ct).ConfigureAwait(false))!.Value;
             var id = await repo.InsertAsync(
                 tenantId, body.ViewerPersonId, body.ViewedPersonId,
                 body.ValidFrom, callerPersonId, body.Reason, ct).ConfigureAwait(false);
@@ -90,7 +90,7 @@ public static class VisibilityEndpoints
             EndpointHelpers.Audit(loggerFactory, "visibility.revoke",
                 ("visibility_id", id),
                 ("rows_affected", rows),
-                ("author_person_id", EndpointHelpers.ResolveCaller(http)!.Value));
+                ("author_person_id", (await EndpointHelpers.ResolveCallerAsync(http, ct).ConfigureAwait(false))!.Value));
             return Results.NoContent();
         });
 

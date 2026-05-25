@@ -31,7 +31,7 @@ public static class SubchartEndpoints
             int? depth,
             CancellationToken ct) =>
         {
-            var callerPersonId = callers.Resolve(http);
+            var callerPersonId = await callers.ResolveAsync(http, ct).ConfigureAwait(false);
             if (callerPersonId is null)
             {
                 return Results.Json(new ProblemResponse(

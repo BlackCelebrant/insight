@@ -35,7 +35,7 @@ public static class PersonsEndpoints
             http.Response.Headers["Deprecation"] = "true";
             http.Response.Headers.Append("Link", "</v1/profiles>; rel=\"successor-version\"");
 
-            var callerPersonId = callers.Resolve(http);
+            var callerPersonId = await callers.ResolveAsync(http, cancellationToken).ConfigureAwait(false);
             if (callerPersonId is null)
             {
                 return Results.Json(new ProblemResponse(
@@ -91,7 +91,7 @@ public static class PersonsEndpoints
             IOptions<AppOptions> options,
             CancellationToken cancellationToken) =>
         {
-            var callerPersonId = callers.Resolve(http);
+            var callerPersonId = await callers.ResolveAsync(http, cancellationToken).ConfigureAwait(false);
             if (callerPersonId is null)
             {
                 return Results.Json(new ProblemResponse(

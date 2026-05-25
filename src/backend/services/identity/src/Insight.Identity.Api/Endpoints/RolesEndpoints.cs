@@ -57,7 +57,7 @@ public static class RolesEndpoints
             EndpointHelpers.Audit(loggerFactory, "roles.create",
                 ("role_id", id),
                 ("name", body.Name),
-                ("author_person_id", EndpointHelpers.ResolveCaller(http)!.Value));
+                ("author_person_id", (await EndpointHelpers.ResolveCallerAsync(http, ct).ConfigureAwait(false))!.Value));
             return Results.Created($"/v1/roles/{id:D}", new RoleResponse(id, body.Name));
         });
 
@@ -100,7 +100,7 @@ public static class RolesEndpoints
                 EndpointHelpers.Audit(loggerFactory, "roles.delete",
                     ("role_id", id),
                     ("name", existing.Name),
-                    ("author_person_id", EndpointHelpers.ResolveCaller(http)!.Value));
+                    ("author_person_id", (await EndpointHelpers.ResolveCallerAsync(http, ct).ConfigureAwait(false))!.Value));
                 return Results.NoContent();
             }
 

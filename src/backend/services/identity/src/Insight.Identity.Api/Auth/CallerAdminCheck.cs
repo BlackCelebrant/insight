@@ -27,7 +27,7 @@ public sealed class CallerAdminCheck
     public async Task<AdminCheckResult> CheckAsync(HttpContext context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
-        var personId = _caller.Resolve(context);
+        var personId = await _caller.ResolveAsync(context, cancellationToken).ConfigureAwait(false);
         if (personId is null)
         {
             return AdminCheckResult.NoCaller;

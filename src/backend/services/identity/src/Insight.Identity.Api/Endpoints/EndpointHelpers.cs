@@ -23,8 +23,8 @@ public static class EndpointHelpers
     public static Guid? ResolveTenant(HttpContext http) =>
         http.RequestServices.GetRequiredService<ITenantContext>().Resolve(http);
 
-    public static Guid? ResolveCaller(HttpContext http) =>
-        http.RequestServices.GetRequiredService<ICallerContext>().Resolve(http);
+    public static Task<Guid?> ResolveCallerAsync(HttpContext http, CancellationToken cancellationToken) =>
+        http.RequestServices.GetRequiredService<ICallerContext>().ResolveAsync(http, cancellationToken);
 
     public static IResult GateResult(AdminCheckResult gate) => gate switch
     {

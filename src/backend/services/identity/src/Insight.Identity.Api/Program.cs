@@ -116,6 +116,14 @@ builder.Services
     .AddJwtBearer(options =>
     {
         options.RequireHttpsMetadata = false;
+        // Keep JWT claim names as-is (`email`, `sub`, `oid`, …) so we
+        // can read them by their short JWT names. Without this, the
+        // default JwtBearer pipeline rewrites `email` / `sub` / `name`
+        // into long ClaimTypes.* URIs (a legacy WS-Federation hand-me-
+        // down), and `FindFirst("email")` would return null while
+        // `oid` (not in the rewrite table) would still work — easy to
+        // miss in review. False keeps every claim under one rule.
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = false,
@@ -130,13 +138,16 @@ builder.Services
         };
     });
 
-// Caller resolver — header-driven; api-gateway sets `X-Insight-Person-Id`
-// from the validated JWT subject.
-builder.Services.AddSingleton<ICallerContext, HeaderCallerContext>();
+// Caller resolver — header first, then JWT claims (oid/sub via
+// account_person_map, then email/preferred_username/upn via persons).
+// Scoped because resolution hits MariaDB through IPersonsReader.
+builder.Services.AddScoped<ICallerContext, HeaderCallerContext>();
 
-// Composite admin-probe — used by CRUD endpoints on /v1/visibility,
-// /v1/roles, /v1/person-roles to gate by the `admin` role.
-builder.Services.AddSingleton<CallerAdminCheck>();
+// Admin-probe — used by CRUD endpoints on /v1/visibility, /v1/roles,
+// /v1/person-roles to gate by the `admin` role. Scoped to match the
+// scoped ICallerContext above (a singleton holding a scoped resolver
+// captures the first-request scope for every later request).
+builder.Services.AddScoped<CallerAdminCheck>();
 
 // JSON wire convention: snake_case on every Minimal-API surface (request
 // body + response body). Lets DTOs in `Contracts/` declare plain PascalCase

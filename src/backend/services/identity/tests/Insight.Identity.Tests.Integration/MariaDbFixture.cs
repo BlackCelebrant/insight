@@ -83,6 +83,8 @@ public sealed class MariaDbFixture : IAsyncLifetime
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand("DELETE FROM person_roles", conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await using (var cmd = new MySqlCommand("DELETE FROM account_person_map", conn))
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand(
             "DELETE FROM roles WHERE role_id <> @admin_id",
             conn))
@@ -105,6 +107,8 @@ public sealed class MariaDbFixture : IAsyncLifetime
         await using (var cmd = new MySqlCommand(RolesDdl, conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand(PersonRolesDdl, conn))
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        await using (var cmd = new MySqlCommand(AccountPersonMapDdl, conn))
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         await using (var cmd = new MySqlCommand(AdminRoleSeed, conn))
         {
@@ -170,6 +174,35 @@ public sealed class MariaDbFixture : IAsyncLifetime
             name    VARCHAR(64) NOT NULL,
             PRIMARY KEY (role_id),
             UNIQUE KEY uk_name (name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """;
+
+    // Mirror of Migrations/002_account_person_map.sql + 010_account_person_map_idx_by_account.sql.
+    private const string AccountPersonMapDdl = """
+        CREATE TABLE IF NOT EXISTS account_person_map (
+            insight_tenant_id BINARY(16) NOT NULL,
+            insight_source_type VARCHAR(100) NOT NULL,
+            insight_source_id BINARY(16) NOT NULL,
+            source_account_id VARCHAR(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+            person_id BINARY(16) NOT NULL,
+            author_person_id BINARY(16) NOT NULL,
+            reason VARCHAR(50) NOT NULL,
+            valid_from TIMESTAMP(6) NOT NULL,
+            valid_to TIMESTAMP(6) NULL,
+            PRIMARY KEY (
+                insight_tenant_id, insight_source_type, insight_source_id,
+                source_account_id, valid_from
+            ),
+            INDEX idx_current (
+                insight_tenant_id, insight_source_type, insight_source_id,
+                source_account_id, valid_to
+            ),
+            INDEX idx_by_account (
+                insight_tenant_id, source_account_id, valid_to
+            ),
+            INDEX idx_person_id (person_id),
+            INDEX idx_tenant_person (insight_tenant_id, person_id),
+            INDEX idx_valid_from (insight_tenant_id, valid_from)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """;
 
