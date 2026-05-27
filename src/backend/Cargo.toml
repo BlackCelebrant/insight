@@ -12,7 +12,7 @@ edition = "2024"
 license = "Apache-2.0"
 authors = ["Cyber Fabric"]
 repository = "https://github.com/cyberfabric/insight"
-rust-version = "1.92.0"
+rust-version = "1.95.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -40,6 +40,11 @@ anyhow = "1.0"
 tokio = { version = "1.47", features = ["full"] }
 async-trait = "0.1"
 futures = "0.3"
+# `Stream` + `StreamExt::next` for driving SeaORM result cursors. Already
+# pulled in transitively by sea-orm; declared at workspace scope so
+# consumers (today: analytics-api schema-validator) can use it explicitly
+# without leaning on a transitive dep.
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 # Web framework
 axum = "0.8"

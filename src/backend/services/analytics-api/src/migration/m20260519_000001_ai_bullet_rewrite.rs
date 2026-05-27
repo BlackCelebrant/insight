@@ -74,8 +74,7 @@ const IC_BULLET_AI_ID: &str = "00000000000000000001000000000013";
 /// Active-counter `metric_key`s — outer uses `sum(v_period)` (count of
 /// active persons), and `range_*` use the hardcoded `0 / 0 / count()`
 /// "X out of N" semantics rather than a real quantile distribution.
-const ACTIVE_LIST: &str =
-    "'active_ai_members', 'cursor_active', 'cc_active', 'codex_active'";
+const ACTIVE_LIST: &str = "'active_ai_members', 'cursor_active', 'cc_active', 'codex_active'";
 
 /// Inner wide-aggregate block: one row per `person_id` with every
 /// FE-visible `metric_key` materialized in its own column.
@@ -410,8 +409,9 @@ mod tests {
         // outer sum across persons would double-count). `countIf > 0 → 1`
         // collapses correctly to a single 1 regardless of row count.
         for key in ["active_ai_members", "cursor_active", "cc_active"] {
-            let countif_pattern =
-                format!("if(countIf(metric_key = '{key}') > 0, toFloat64(1), CAST(NULL AS Nullable(Float64))) AS {key}_v");
+            let countif_pattern = format!(
+                "if(countIf(metric_key = '{key}') > 0, toFloat64(1), CAST(NULL AS Nullable(Float64))) AS {key}_v"
+            );
             assert!(
                 query.contains(&countif_pattern),
                 "{label}: active marker `{key}_v` must use `countIf(...) > 0 → 1 else NULL` (not sumIf — Branch 1 emits multiple rows per person-day for multi-tool users)"

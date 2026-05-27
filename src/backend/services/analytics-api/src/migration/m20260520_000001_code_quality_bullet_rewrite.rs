@@ -153,8 +153,12 @@ mod tests {
     /// Every FE-visible `metric_key` the bullet section emits must
     /// appear as an `('X', X_v)` entry in the ARRAY JOIN unpivot.
     /// 1 view-emitted + 3 `ComingSoon` hardcoded = 4 total.
-    const EXPECTED_METRIC_KEYS: &[&str] =
-        &["bugs_fixed", "prs_per_dev", "pr_cycle_time", "build_success"];
+    const EXPECTED_METRIC_KEYS: &[&str] = &[
+        "bugs_fixed",
+        "prs_per_dev",
+        "pr_cycle_time",
+        "build_success",
+    ];
 
     /// The single raw `metric_key` the view emits that `query_ref`
     /// reads via `sumIf`. A typo here = silent NULL.
@@ -163,8 +167,7 @@ mod tests {
     /// `metric_key`s that must NOT be read via `sumIf` — the view no
     /// longer emits them, so a `metric_key = 'X'` read would silently
     /// aggregate to NULL.
-    const FORBIDDEN_RAW_KEY_READS: &[&str] =
-        &["prs_per_dev", "pr_cycle_time", "build_success"];
+    const FORBIDDEN_RAW_KEY_READS: &[&str] = &["prs_per_dev", "pr_cycle_time", "build_success"];
 
     fn assert_query_shape(query: &str, label: &str) {
         let table_refs = query.matches("insight.code_quality_bullet_rows").count();

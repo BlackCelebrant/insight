@@ -18,9 +18,7 @@
 //! failures accumulate into a single report — so one bad assertion doesn't
 //! mask the next.
 
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement, Value,
-};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement, Value};
 use sea_orm_migration::MigratorTrait;
 
 use super::{Migrator, REQUIRED_CHECKS_BY_TABLE};
@@ -182,8 +180,7 @@ async fn catalog_schema_end_to_end() -> anyhow::Result<()> {
         .await;
     if bad_shape_no_dot.is_ok() {
         failures.push(
-            "metric_key without a dot MUST violate chk_metric_catalog_metric_key_shape"
-                .to_owned(),
+            "metric_key without a dot MUST violate chk_metric_catalog_metric_key_shape".to_owned(),
         );
     }
     let bad_shape_uppercase = db
@@ -281,8 +278,9 @@ async fn catalog_schema_end_to_end() -> anyhow::Result<()> {
     )
     .await?;
     match check_probe::assert_required_checks(&db).await {
-        Ok(()) => failures
-            .push("probe MUST refuse to start when a required CHECK is missing".to_owned()),
+        Ok(()) => {
+            failures.push("probe MUST refuse to start when a required CHECK is missing".to_owned())
+        }
         Err(e) => {
             let msg = format!("{e:#}");
             if !msg.contains("chk_metric_catalog_tenant_id_null") {

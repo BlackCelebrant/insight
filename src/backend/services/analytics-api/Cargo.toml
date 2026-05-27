@@ -13,6 +13,10 @@ workspace = true
 
 [dependencies]
 insight-clickhouse = { workspace = true }
+# Direct `clickhouse` dep is for the `Row` derive on `system.columns` probe
+# rows (Refs #521 schema-validator). `insight-clickhouse` wraps the client
+# but doesn't re-export the row-deserialization derives.
+clickhouse = { workspace = true }
 
 axum = { workspace = true }
 tower-http = { workspace = true }
@@ -29,6 +33,7 @@ anyhow = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
+futures-util = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
