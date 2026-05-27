@@ -1,7 +1,17 @@
 //! MariaDB read/write paths for the schema-validator.
 //!
-//! Two reads (list-all rows and read-one-by-key for debounce/per-write) and a
+//! Two reads (catalog cursor + read-one-by-key for debounce/per-write) and a
 //! single write path (`UPDATE metric_catalog SET schema_* ...`).
+//!
+//! ## Why a cursor instead of `Vec<CatalogRow>` for the startup pass
+//!
+//! `validate_all` is a per-row pipeline — probe → persist → log — that never
+//! revisits a prior row. Materializing the whole catalog into a `Vec` would
+//! peak memory proportional to row count for no benefit. The catalog is
+//! capped at ≤200 rows in v1 per PRD §6, so OOM is not a present risk, but
+//! relying on that cap to hold across future per-tenant scaling is exactly
+//! the kind of implicit dependency that breaks silently. Streaming via the
+//! SeaORM cursor pins the right shape: at most one row in memory at a time.
 //!
 //! ## Why raw SQL for the write path
 //!
@@ -15,7 +25,10 @@
 //! expression anyway, so a single bound-parameter `UPDATE` keeps the
 //! contract load-bearing in one place.
 
+use std::pin::Pin;
+
 use chrono::{DateTime, Utc};
+use futures_util::Stream;
 use sea_orm::{ConnectionTrait, DatabaseConnection, FromQueryResult, Statement, Value};
 use uuid::Uuid;
 
@@ -48,18 +61,48 @@ impl CatalogRow {
     }
 }
 
-/// List every row in `metric_catalog` — id, `metric_key`, and current `schema_*` triple.
+/// Count rows in `metric_catalog`. Used as a cheap empty-catalog gate before
+/// `validate_all` enters its ClickHouse-wait loop — without it, an empty
+/// catalog paired with an unreachable ClickHouse would have the validator
+/// retrying forever on a no-op bulk mark.
 ///
 /// # Errors
 ///
-/// Propagates `SeaORM` connection / query errors.
-pub async fn list_all(db: &DatabaseConnection) -> Result<Vec<CatalogRow>, sea_orm::DbErr> {
+/// Propagates `SeaORM` connection / query errors. A missing COUNT row maps
+/// to [`sea_orm::DbErr::Custom`] (defensive — `COUNT(*)` always returns
+/// exactly one row).
+pub async fn count_all(db: &DatabaseConnection) -> Result<u64, sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT COUNT(*) AS n FROM metric_catalog",
+        ))
+        .await?
+        .ok_or_else(|| sea_orm::DbErr::Custom("COUNT(*) returned no row".to_owned()))?;
+    let n: i64 = row.try_get("", "n")?;
+    Ok(u64::try_from(n).unwrap_or(0))
+}
+
+/// The concrete stream type returned by [`stream_all`]. Aliased to keep the
+/// `Pin<Box<dyn …>>` noise out of call sites.
+pub type CatalogRowStream<'a> =
+    Pin<Box<dyn Stream<Item = Result<CatalogRow, sea_orm::DbErr>> + Send + 'a>>;
+
+/// Open a cursor over every row in `metric_catalog`. The stream borrows `db`
+/// for its lifetime and yields `(id, metric_key, schema_*)` triples one row
+/// at a time, so callers never hold more than one row in memory.
+///
+/// # Errors
+///
+/// Propagates `SeaORM` connection / query errors raised at stream-open time.
+/// Per-row errors surface through `Stream::Item = Result<_, DbErr>`.
+pub async fn stream_all(db: &DatabaseConnection) -> Result<CatalogRowStream<'_>, sea_orm::DbErr> {
     CatalogRow::find_by_statement(Statement::from_string(
         db.get_database_backend(),
         "SELECT id, metric_key, schema_status, schema_checked_at, schema_error_code \
          FROM metric_catalog",
     ))
-    .all(db)
+    .stream(db)
     .await
 }
 

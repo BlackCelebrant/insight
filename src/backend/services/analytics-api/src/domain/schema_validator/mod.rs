@@ -48,8 +48,10 @@ use crate::domain::schema_validator::error_code::SchemaErrorCode;
 use crate::domain::schema_validator::parse::parse_metric_key;
 use crate::domain::schema_validator::probe::{ProbeError, ProbeOutcome, probe};
 use crate::domain::schema_validator::repository::{
-    CatalogRow, find_by_metric_key, list_all, mark_all_unchecked, update_schema_columns,
+    CatalogRow, count_all, find_by_metric_key, mark_all_unchecked, stream_all,
+    update_schema_columns,
 };
+use futures_util::StreamExt;
 use crate::domain::schema_validator::status::{SchemaState, SchemaStatus, should_log_transition};
 
 /// Default debounce window for the per-write hook (DESIGN §3.2 + #521 issue body).
@@ -199,40 +201,74 @@ impl SchemaValidator {
     /// Owns the exponential-backoff retry loop: if the first ClickHouse call
     /// fails (the warehouse is down at boot), marks every row as `unchecked`
     /// once, emits a degraded-mode summary log, and sleeps with backoff
-    /// until ClickHouse comes back. Once reachable, runs the per-row probe
-    /// loop to completion.
+    /// until ClickHouse comes back. Once reachable, walks the catalog via a
+    /// DB cursor — one row in memory at a time — and persists per-row
+    /// outcomes.
     ///
     /// Returns when the pass finishes. The caller (`main.rs`) doesn't await
     /// this — it's spawned as a `tokio::task`.
     pub async fn validate_all(&self) -> ValidateAllStats {
-        let rows = match list_all(&self.db).await {
-            Ok(r) => r,
+        // Empty-catalog gate: skip the CH wait + bulk-mark + cursor open if
+        // the catalog has no rows. Without this, an empty catalog paired with
+        // an unreachable ClickHouse would retry forever on a no-op mark.
+        match count_all(&self.db).await {
+            Ok(0) => {
+                tracing::info!("schema_validator.validate_all: no catalog rows to probe");
+                return ValidateAllStats::default();
+            }
+            Ok(_) => {}
             Err(e) => {
                 tracing::error!(
                     error = %e,
-                    "schema_validator.validate_all failed to list catalog rows; \
+                    "schema_validator.validate_all failed to count catalog rows; \
                      aborting startup pass (read endpoint will continue serving \
                      existing schema_status values)"
                 );
                 return ValidateAllStats::default();
             }
-        };
-
-        if rows.is_empty() {
-            tracing::info!("schema_validator.validate_all: no catalog rows to probe");
-            return ValidateAllStats::default();
         }
 
-        self.wait_for_clickhouse(rows.len()).await;
+        // Wait for CH BEFORE opening the cursor so the MariaDB connection
+        // backing the stream isn't held idle for the whole degraded-mode
+        // window (which could be minutes — would starve the pool).
+        self.wait_for_clickhouse().await;
+
+        let mut stream = match stream_all(&self.db).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "schema_validator.validate_all failed to open catalog cursor; \
+                     aborting startup pass"
+                );
+                return ValidateAllStats::default();
+            }
+        };
 
         let mut stats = ValidateAllStats::default();
-        for row in &rows {
+        let mut total: u64 = 0;
+        while let Some(row_result) = stream.next().await {
+            let row = match row_result {
+                Ok(r) => r,
+                Err(e) => {
+                    // Per-row decode/transport failure inside the cursor — keep
+                    // going; the next row may be readable.
+                    tracing::warn!(
+                        error = %e,
+                        "schema_validator: failed to read catalog row from cursor; skipping"
+                    );
+                    stats.probe_failed = stats.probe_failed.saturating_add(1);
+                    continue;
+                }
+            };
+            total = total.saturating_add(1);
+
             let now = Utc::now();
-            let new_state = match self.probe_row(row).await {
+            let new_state = match self.probe_row(&row).await {
                 Ok(probed) => probed,
                 Err(ProbeError::Unreachable(_)) => {
-                    // CH went down mid-pass — biconditional requires error_code=NULL
-                    // on the wire when status != Error.
+                    // CH went down mid-pass — biconditional requires
+                    // error_code=NULL on the wire when status != Error.
                     stats.probe_failed = stats.probe_failed.saturating_add(1);
                     SchemaState::unchecked()
                 }
@@ -244,12 +280,12 @@ impl SchemaValidator {
                 SchemaStatus::Unchecked => {}
             }
 
-            self.persist(row, new_state, now).await;
+            self.persist(&row, new_state, now).await;
         }
 
         if stats.probe_failed > 0 {
             tracing::warn!(
-                total = rows.len(),
+                total,
                 ok = stats.ok,
                 error = stats.error,
                 probe_failed = stats.probe_failed,
@@ -257,7 +293,7 @@ impl SchemaValidator {
             );
         } else {
             tracing::info!(
-                total = rows.len(),
+                total,
                 ok = stats.ok,
                 error = stats.error,
                 "schema_validator.validate_all finished"
@@ -339,7 +375,7 @@ impl SchemaValidator {
     /// Wait for ClickHouse to be reachable, in an exponential-backoff loop.
     /// On the FIRST consecutive failure, also flips every catalog row to
     /// `unchecked` so the read endpoint reflects degraded mode immediately.
-    async fn wait_for_clickhouse(&self, total_rows: usize) {
+    async fn wait_for_clickhouse(&self) {
         let mut attempt: u32 = 0;
         let mut marked_degraded = false;
         loop {
@@ -374,7 +410,6 @@ impl SchemaValidator {
                             Ok(marked) => {
                                 tracing::warn!(
                                     event = "schema_validator.degraded_mode_entered",
-                                    total_rows,
                                     marked_rows = marked,
                                     reason = SchemaErrorCode::ClickhouseUnreachable.as_db_str(),
                                     error = %e,
