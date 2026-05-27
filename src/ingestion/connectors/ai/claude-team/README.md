@@ -2,7 +2,10 @@
 
 Extracts claude.ai Team plan data (organization roster, pending invites, overage spend, and per-user Claude Code metrics) into the Bronze layer.
 
-Authentication: sessionKey browser cookie, managed by the in-cluster **claude-team-proxy** service. The connector itself carries no credentials — it talks to the proxy over plain HTTP via in-cluster DNS. See `src/backend/services/claude-team-proxy/` for the proxy implementation.
+**Authentication model**: this connector talks to a **customer-deployed proxy** (not to claude.ai directly). The proxy holds the claude.ai sessionKey cookie inside the customer's environment; Insight authenticates to the proxy with a shared bearer token. The session cookie never enters Insight infrastructure.
+
+Proxy source code, Dockerfile, and deployment docs:
+**[gitlab.constr.dev/insight/secure-enclave → proxies/claude_team/](https://gitlab.constr.dev/insight/secure-enclave)**
 
 ## Specification
 
@@ -12,11 +15,12 @@ Authentication: sessionKey browser cookie, managed by the in-cluster **claude-te
 
 ## Prerequisites
 
-1. The deploying organization must be on a **claude.ai Team plan** with an active organization.
-2. A browser sessionKey must be extracted from claude.ai (DevTools → Application → Cookies → `sessionKey`) and loaded into the **claude-team-proxy** Helm release (see proxy README). The connector itself never sees the sessionKey.
-3. The `claude-team-proxy` service must be deployed and reachable at `claude-team-proxy.insight.svc.cluster.local:3000` (default) before the first Airbyte sync.
-4. To collect `claude_team_code_metrics`, the account associated with the sessionKey must have access to Claude Code usage metrics within the org.
-5. To collect `claude_team_overage_spend`, the sessionKey must have `billing:view` permission. If absent, the stream is silently skipped (sync stays GREEN, zero records).
+1. The customer is on a **claude.ai Team plan** with an active organization.
+2. The customer has deployed the **claude-team-proxy** Docker container from `secure-enclave/proxies/claude_team/` on their infrastructure and exposed it over the network (typically behind TLS + reverse proxy).
+3. The customer has installed a valid sessionKey into the proxy via `POST /admin/session-key`. The proxy returns 503 from `/api/*` until this is done.
+4. Insight and the customer have exchanged the bearer token (`proxy_auth_token`) out-of-band.
+5. To collect `claude_team_code_metrics`, the account associated with the sessionKey must have access to Claude Code usage metrics within the org.
+6. To collect `claude_team_overage_spend`, the sessionKey must have `billing:view` permission. If absent, the stream is silently skipped (sync stays GREEN, zero records).
 
 ## K8s Secret
 
@@ -33,8 +37,9 @@ metadata:
     insight.cyberfabric.com/source-id: claude-team-main
 type: Opaque
 stringData:
-  claude_org_id: "<uuid-from-claude.ai>"
-  # proxy_url: "http://claude-team-proxy.insight.svc.cluster.local:3000"  # optional, default shown
+  claude_org_id:    "<uuid-from-claude.ai>"
+  proxy_url:        "https://claude-team-proxy.customer.example.com"
+  proxy_auth_token: "<shared-bearer-token>"
   # start_date: "2025-11-24"  # optional; earliest code_metrics backfill date (YYYY-MM-DD)
 ```
 
@@ -43,15 +48,11 @@ stringData:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `claude_org_id` | Yes | UUID of the claude.ai organisation. Find via DevTools console: `fetch('/api/organizations').then(r=>r.json()).then(console.table)` |
-| `proxy_url` | No | Base URL of the claude-team-proxy. Default: `http://claude-team-proxy.insight.svc.cluster.local:3000`. Override only for local development. |
+| `proxy_url` | Yes | Base URL of the customer-deployed claude-team-proxy. No default — must be set per installation. |
+| `proxy_auth_token` | Yes | Bearer token sent as `Authorization: Bearer <token>` on every request to the proxy. Must match the proxy's `PROXY_AUTH_TOKEN` env var. |
 | `start_date` | No | Earliest date for `claude_team_code_metrics` backfill (YYYY-MM-DD). Default: 7 days ago. Absolute earliest: `2025-11-24`. Has no effect on the three snapshot streams. |
 
-> **sessionKey is NOT in this Secret.** Authentication is handled entirely by the `claude-team-proxy` Helm release. Rotate the sessionKey via:
-> ```bash
-> helm upgrade claude-team-proxy ./src/backend/services/claude-team-proxy/helm \
->   --namespace insight --reuse-values \
->   --set-string sessionKey="<new-sessionKey-from-DevTools>"
-> ```
+> **The claude.ai sessionKey is NOT in this Secret.** It lives only on the customer's proxy container. Cookie rotation is the customer's responsibility — Insight never sees it.
 
 ### Automatically injected
 
@@ -64,21 +65,6 @@ These fields are added to every record by the connector — do **not** put them 
 | `unique_key` | Composite primary key (varies per stream — see Streams below) |
 | `data_source` | Always `insight_claude_team` |
 | `collected_at` | UTC ISO-8601 timestamp at extraction time |
-
-### Local development
-
-```bash
-cp src/ingestion/secrets/connectors/claude-team.yaml.example src/ingestion/secrets/connectors/claude-team.yaml
-# Edit with the real claude_org_id, then apply:
-kubectl apply -f src/ingestion/secrets/connectors/claude-team.yaml
-```
-
-For local development without a running cluster, set `proxy_url` to a locally-running instance of the proxy (e.g. `http://localhost:3000`). Start the proxy locally with:
-
-```bash
-cd src/backend/services/claude-team-proxy
-SESSION_KEY="<your-sessionKey>" node src/index.js
-```
 
 ## Streams
 
@@ -102,10 +88,10 @@ Silver transformations are out of scope for this MVP (Phase 6+). `dbt_select` in
 
 ## Operational Constraints
 
-- **sessionKey expiry**: when the cookie expires, the proxy starts returning HTTP 401 for all `/api/*` requests. The connector sync fails (Airbyte marks it RED), alerting operators. Rotate the sessionKey via `helm upgrade --set-string sessionKey=...` against the proxy Helm release.
-- **Cloudflare challenge**: the proxy boots a headless Chromium to solve the initial CF challenge. Boot time is up to 60 s; the Helm liveness probe uses `initialDelaySeconds: 60` to avoid false restarts. During high-traffic periods CF challenges can take longer — the proxy will exit and be restarted by K8s.
-- **Single-replica proxy**: by design (DESIGN §2.2). The proxy holds a single browser session and is not horizontally scalable. Sync cadence is daily at 04:00 UTC to avoid overlap with other Insight connectors.
-- **No CI/CD entry for proxy image**: the proxy Docker image is built and pushed manually for MVP. A follow-up issue tracks CI automation.
+- **sessionKey expiry**: when the cookie expires (~30–90 days, no published TTL), the proxy `/api/*` calls start returning 502 with "transport not ready". The customer rotates the cookie via `POST /admin/session-key` on the proxy — no change required on the Insight side.
+- **Cloudflare challenge**: the proxy solves the CF challenge during `setSessionKey`, not at startup. First call after a key rotation may take up to 60 s. Insight retries on transient 503/502.
+- **Token rotation**: `proxy_auth_token` rotation requires updating both the K8s Secret here and the `PROXY_AUTH_TOKEN` env on the proxy container. Coordinate via the customer.
+- **One proxy = one org**: the proxy container is bound to a single `CLAUDE_ORG_ID`. Multiple claude organisations require multiple proxy deployments and multiple Insight connector instances.
 
 ## Validation
 

@@ -1,10 +1,14 @@
 # Airbyte Declarative Source for claude-team — issue #458.
 #
-# Talks to the in-cluster `claude-team-proxy` Service, NOT to claude.ai
-# directly. The proxy is a headless Chromium that holds the sessionKey
-# cookie and presents the claude.ai web API as a plain HTTP service.
-# See src/backend/services/claude-team-proxy/ for the proxy
-# implementation.
+# Talks to a customer-deployed `claude-team-proxy` HTTP endpoint, NOT to
+# claude.ai directly. The proxy is a headless-Chromium bridge that holds
+# the customer's sessionKey cookie inside the customer's environment and
+# presents the claude.ai web API as a plain HTTP service. Insight
+# authenticates with a shared bearer token (`proxy_auth_token`); the
+# cookie itself never leaves the customer.
+#
+# Proxy source code + Dockerfile + deployment docs:
+#   https://gitlab.constr.dev/insight/secure-enclave → proxies/claude_team/
 #
 # Four streams (this commit completes the Phase 5 MVP set):
 #   1. claude_team_members     — full snapshot, no pagination
@@ -64,6 +68,8 @@ streams:
         url_base: "{{ config['proxy_url'] }}"
         path: "/api/organizations/{{ config['claude_org_id'] }}/members"
         http_method: GET
+        request_headers:
+          Authorization: "Bearer {{ config['proxy_auth_token'] }}"
       record_selector:
         type: RecordSelector
         extractor:
@@ -121,6 +127,8 @@ streams:
         url_base: "{{ config['proxy_url'] }}"
         path: "/api/organizations/{{ config['claude_org_id'] }}/invites"
         http_method: GET
+        request_headers:
+          Authorization: "Bearer {{ config['proxy_auth_token'] }}"
       record_selector:
         type: RecordSelector
         extractor:
@@ -186,6 +194,8 @@ streams:
         url_base: "{{ config['proxy_url'] }}"
         path: "/api/organizations/{{ config['claude_org_id'] }}/overage_spend_limits"
         http_method: GET
+        request_headers:
+          Authorization: "Bearer {{ config['proxy_auth_token'] }}"
         # Tolerate the most common failure mode for this stream — the
         # sessionKey lacks billing:view. Mark the response as "no
         # records" instead of failing the whole sync. Sync stays GREEN
@@ -299,6 +309,8 @@ streams:
         url_base: "{{ config['proxy_url'] }}"
         path: "/api/claude_code/metrics_aggs/users"
         http_method: GET
+        request_headers:
+          Authorization: "Bearer {{ config['proxy_auth_token'] }}"
         request_parameters:
           organization_uuid: "{{ config['claude_org_id'] }}"
           customer_type: "claude_ai"
@@ -387,6 +399,8 @@ spec:
       - insight_tenant_id
       - insight_source_id
       - claude_org_id
+      - proxy_url
+      - proxy_auth_token
     properties:
       insight_tenant_id:
         type: string
@@ -404,16 +418,27 @@ spec:
         type: string
         title: Proxy URL
         description: |
-          Base URL of the claude-team-proxy service. Defaults to the
-          in-cluster DNS name; override only for development.
-        default: "http://claude-team-proxy.insight.svc.cluster.local:3000"
+          Base URL of the customer-deployed claude-team-proxy
+          (https://gitlab.constr.dev/insight/secure-enclave →
+          proxies/claude_team). The customer hosts this proxy themselves
+          and exposes it over the network to Insight. No default —
+          operator MUST set per installation.
         order: 2
+      proxy_auth_token:
+        type: string
+        title: Proxy Auth Token
+        airbyte_secret: true
+        description: |
+          Shared bearer token used by Insight to authenticate to the
+          customer-hosted proxy. Sent as `Authorization: Bearer <token>`
+          on every request. Matches the proxy's PROXY_AUTH_TOKEN env var.
+        order: 3
       insight_source_id:
         type: string
         title: Source Instance ID
         description: Optional connector instance identifier for multi-instance deployments. Set by the reconcile loop from the K8s Secret annotation `insight.cyberfabric.com/source-id`.
         default: ""
-        order: 3
+        order: 4
       start_date:
         type: string
         title: Start Date (code_metrics only)
@@ -424,7 +449,7 @@ spec:
           for the test organisation). Has no effect on the other three
           streams which are full-snapshot.
         default: ""
-        order: 4
+        order: 5
     additionalProperties: true
 
 metadata:
