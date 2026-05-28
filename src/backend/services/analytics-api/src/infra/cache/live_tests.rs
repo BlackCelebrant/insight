@@ -1,8 +1,19 @@
 //! Live Redis integration tests for the catalog cache layer (Refs #524).
 //!
-//! All tests are `#[ignore]`d by default and skip silently when `REDIS_URL`
-//! is unset. Set `REDIS_URL=redis://127.0.0.1:6379` against a throwaway Redis
-//! to exercise them.
+//! All tests are `#[ignore]`d by default and skip silently when
+//! `INTEGRATION_TESTS_REDIS_URL` is unset. Set
+//! `INTEGRATION_TESTS_REDIS_URL=redis://127.0.0.1:6379` against a throwaway
+//! Redis to exercise them.
+//!
+//! ## Why the `INTEGRATION_TESTS_` prefix
+//!
+//! These tests `UNLINK` keys under `cat:v1:*` and would clobber whatever
+//! Redis they're pointed at. A plain `REDIS_URL` would collide with the
+//! same name commonly exported in a dev shell (compose stacks, in-cluster
+//! service discovery) — running `cargo test -- --ignored` with that set
+//! would mutate the wrong Redis. The `INTEGRATION_TESTS_` prefix forces the
+//! operator to opt in for THIS test suite specifically. Same convention as
+//! `domain/schema_validator/live_tests.rs`.
 //!
 //! Coverage map vs the issue's Definition of Done:
 //! - `DoD` #6 (≤ 2 s p99 cross-replica invalidation) — exercised by
@@ -30,7 +41,7 @@ use crate::infra::cache::catalog_cache::{
     cache_key,
 };
 
-const ENV_VAR: &str = "REDIS_URL";
+const ENV_VAR: &str = "INTEGRATION_TESTS_REDIS_URL";
 
 async fn connect_or_skip() -> Option<RedisCatalogCache> {
     let Ok(url) = std::env::var(ENV_VAR) else {
@@ -75,7 +86,7 @@ fn sample_payload(tenant_id: Uuid) -> CatalogResponse {
 }
 
 #[tokio::test]
-#[ignore = "requires live Redis; set REDIS_URL to enable"]
+#[ignore = "requires live Redis; set INTEGRATION_TESTS_REDIS_URL to enable"]
 async fn put_then_get_roundtrips() -> anyhow::Result<()> {
     let Some(cache) = connect_or_skip().await else {
         return Ok(());
@@ -96,7 +107,7 @@ async fn put_then_get_roundtrips() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "requires live Redis; set REDIS_URL to enable"]
+#[ignore = "requires live Redis; set INTEGRATION_TESTS_REDIS_URL to enable"]
 async fn cross_tenant_hydrate_forces_miss() -> anyhow::Result<()> {
     // `DoD` #7: a cached payload whose embedded `tenant_id` is T2 MUST NOT be
     // served to a T1 request, even if the cache key collided (which would
@@ -129,7 +140,7 @@ async fn cross_tenant_hydrate_forces_miss() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "requires live Redis; set REDIS_URL to enable"]
+#[ignore = "requires live Redis; set INTEGRATION_TESTS_REDIS_URL to enable"]
 async fn invalidate_tenant_prefix_does_not_clobber_sibling_tenants() -> anyhow::Result<()> {
     // Critical invariant: tenant-prefix purge MUST be tenant-scoped. A
     // sloppy implementation that did `FLUSHDB` or used a wildcard match
@@ -166,7 +177,7 @@ async fn invalidate_tenant_prefix_does_not_clobber_sibling_tenants() -> anyhow::
 }
 
 #[tokio::test]
-#[ignore = "requires live Redis; set REDIS_URL to enable; sleeps past LOCK_BYPASS_WINDOW"]
+#[ignore = "requires live Redis; set INTEGRATION_TESTS_REDIS_URL to enable; sleeps past LOCK_BYPASS_WINDOW"]
 async fn lock_bypass_window_expires() -> anyhow::Result<()> {
     // The lock-bypass window is `2 ×` the cross-replica invalidation p99
     // (= 5 s). `should_skip(tenant)` MUST return true right after
@@ -196,7 +207,7 @@ async fn lock_bypass_window_expires() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "requires live Redis; set REDIS_URL to enable"]
+#[ignore = "requires live Redis; set INTEGRATION_TESTS_REDIS_URL to enable"]
 async fn cross_instance_invalidation_is_visible_immediately() -> anyhow::Result<()> {
     // `DoD` #6: two `RedisCatalogCache` instances against the SAME Redis URL
     // (= two analytics-api replicas in prod) MUST see each other's
@@ -228,7 +239,7 @@ async fn cross_instance_invalidation_is_visible_immediately() -> anyhow::Result<
 }
 
 #[tokio::test]
-#[ignore = "requires live Redis; set REDIS_URL to enable"]
+#[ignore = "requires live Redis; set INTEGRATION_TESTS_REDIS_URL to enable"]
 async fn flush_all_uses_cat_v1_prefix_not_flushdb() -> anyhow::Result<()> {
     // Critical isolation property: `flush_all` MUST be a `cat:v1:*` prefix
     // purge — not a global FLUSHDB. Verified by writing a key OUTSIDE the
