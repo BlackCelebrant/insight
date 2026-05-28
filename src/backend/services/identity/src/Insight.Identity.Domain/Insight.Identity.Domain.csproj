@@ -3,4 +3,8 @@
     <RootNamespace>Insight.Identity.Domain</RootNamespace>
     <AssemblyName>Insight.Identity.Domain</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The PersonsSeedService test-seam ctor (deterministic mint factory) is internal. -->
+    <InternalsVisibleTo Include="Insight.Identity.Tests.Unit" />
+  </ItemGroup>
 </Project>
