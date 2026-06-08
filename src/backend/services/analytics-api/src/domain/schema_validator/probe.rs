@@ -47,7 +47,7 @@ pub enum ProbeOutcome {
 }
 
 #[derive(Row, Deserialize)]
-#[allow(clippy::struct_field_names)] // fields ARE counts of distinct column kinds; postfix is semantic
+#[allow(clippy::struct_field_names)] // fields ARE counts of distinct column kinds; postfix is semantic.
 struct ProbeRow {
     total_columns: u64,
     matching_columns: u64,
