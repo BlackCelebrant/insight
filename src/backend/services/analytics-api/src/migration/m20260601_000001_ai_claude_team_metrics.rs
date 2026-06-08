@@ -268,7 +268,7 @@ mod tests {
         "cursor_total_lines",
     ];
 
-    /// Dropped metric_keys from m20260519 that must NOT be read via sumIf.
+    /// Dropped `metric_keys` from m20260519 that must NOT be read via sumIf.
     const FORBIDDEN_RAW_KEY_READS: &[&str] = &[
         "cursor_acceptance",
         "cc_tool_acceptance",
@@ -278,7 +278,7 @@ mod tests {
         "claude_web",
     ];
 
-    /// New Claude Team metric_keys must NOT appear in ACTIVE_LIST
+    /// New Claude Team `metric_keys` must NOT appear in `ACTIVE_LIST`
     /// (they are counters, not active-person markers).
     const CLAUDE_TEAM_KEYS: &[&str] = &["cc_cost", "prs_with_cc", "prs_total"];
 

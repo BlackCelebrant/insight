@@ -1438,8 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn inject_skips_bare_bronze_table_without_metric_date()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn inject_skips_bare_bronze_table_without_metric_date() {
         let from = "bronze_bamboohr.employees e \
                     LEFT JOIN insight.people p ON e.workEmail = p.email";
         let where_clause = " WHERE metric_date >= '2026-04-01'";
@@ -1449,12 +1448,11 @@ mod tests {
             inject_date_filter_into_subqueries(&normalised, where_clause).is_none(),
             "bronze leaf must be skipped (no metric_date column)"
         );
-        Ok(())
     }
 
     #[test]
-    fn inject_after_prewrap_injects_into_bare_fact_table()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn inject_after_prewrap_injects_into_bare_fact_table() -> Result<(), Box<dyn std::error::Error>>
+    {
         let from = "insight.team_member m \
                     LEFT JOIN insight.people p ON m.person_id = p.person_id";
         let where_clause = " WHERE metric_date >= '2026-04-01'";
@@ -1541,7 +1539,10 @@ mod tests {
     #[test]
     fn ensure_subquery_from_wraps_bare_single_table() {
         let from = "insight.ic_kpis";
-        assert_eq!(ensure_subquery_from(from), "(SELECT * FROM insight.ic_kpis)");
+        assert_eq!(
+            ensure_subquery_from(from),
+            "(SELECT * FROM insight.ic_kpis)"
+        );
     }
 
     #[test]
