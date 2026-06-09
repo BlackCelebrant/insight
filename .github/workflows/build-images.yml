@@ -420,13 +420,30 @@ jobs:
   #
   # See ADR-0016 (descriptor.images: schema) and ADR-0001 (chart-publishing).
   bump-descriptors:
-    needs: [changes, discover-images, build-image]
+    needs:
+      - changes
+      - discover-images
+      - backend-api-gateway
+      - backend-analytics-api
+      - backend-identity
+      - toolbox
+      - build-image
+    # All siblings must finish first — bump-descriptors auto-commits to main
+    # and that push retriggers the workflow, so we must NOT pin descriptors
+    # while a backend service or toolbox is still building or has just failed
+    # tests. The `success || skipped` shape mirrors publish-chart: any of
+    # the backend/toolbox jobs may legitimately be `skipped` when `changes`
+    # didn't flag them, but they must never be `failure` or `cancelled`.
     if: |
       always()
       && github.event_name == 'push'
       && github.ref == 'refs/heads/main'
       && needs.discover-images.outputs.any == 'true'
       && needs.build-image.result == 'success'
+      && (needs.backend-api-gateway.result   == 'success' || needs.backend-api-gateway.result   == 'skipped')
+      && (needs.backend-analytics-api.result == 'success' || needs.backend-analytics-api.result == 'skipped')
+      && (needs.backend-identity.result      == 'success' || needs.backend-identity.result      == 'skipped')
+      && (needs.toolbox.result               == 'success' || needs.toolbox.result               == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       # `committed` is set to 'true' when this job actually pushed a
