@@ -109,3 +109,7 @@ figment = { version = "0.10", features = ["yaml", "env"] }
 
 # Internal crates
 insight-clickhouse = { path = "libs/insight-clickhouse" }
+
+# CI rebuild marker — bumped to retrigger the api-gateway + analytics-api
+# image builds on the constructorfabric/* namespace flip (2026-06-09).
+
