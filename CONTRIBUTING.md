@@ -224,6 +224,40 @@ dist before bringing the stack up (or whenever you change source).
 
 ---
 
+## Dev auth chain (no-auth mode)
+
+When `AUTH_DISABLED=true` and `VITE_DEV_USER_EMAIL=you@yourorg.com`,
+here is what actually carries identity from the browser to the
+downstream service. Knowing the path saves time when something
+401s unexpectedly.
+
+```
+1. Browser  → fetch-with-auth.ts builds an unsigned JWT
+              ({alg:"none"}.{email, sub, preferred_username}.) and sets
+              Authorization: Bearer <jwt> on every request.
+2. Vite     → proxies /api/* to api-gateway via the compose network.
+3. Gateway  → auth_disabled=true skips JWT validation, but the proxy
+              module forwards the Authorization header end-to-end.
+4. Service  → identity's HeaderCallerContext falls back to JWT claims
+              when X-Insight-Person-Id is absent: reads `email` /
+              `sub` / `oid`, looks the value up in `persons`
+              (value_type='email'), returns the matching person_id.
+              Tenant comes from X-Insight-Tenant-Id, or
+              IDENTITY__identity__tenant_default_id when absent.
+```
+
+So three things must all be true for a dev call to succeed:
+
+* `VITE_DEV_USER_EMAIL` is set (FE builds the bearer token).
+* A row in `persons` has `value_type='email'` and `value_id` matching
+  that address (run `./dev-compose-seed.sh`).
+* The gateway proxies `/api/{prefix}` to the right upstream (see
+  `no-auth.yaml`).
+
+If you bypass the FE (curl from the host) you must construct the
+same fake bearer yourself, otherwise identity returns
+`401 caller_unresolved`.
+
 ## Dev impersonation seed
 
 A fresh stack has an empty `identity.persons` table. The frontend
