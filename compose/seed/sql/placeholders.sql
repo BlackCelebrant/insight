@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS silver.class_collab_email_activity (
     received_count    Float64,
     read_count        Float64,
     _version          UInt64
-) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, date) COMMENT 'INSIGHT_PLACEHOLDER_v1';
+) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, date, data_source) COMMENT 'INSIGHT_PLACEHOLDER_v1';
 CREATE TABLE IF NOT EXISTS silver.class_collab_meeting_activity (
     insight_tenant_id              String,
     email                          String,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS silver.class_collab_meeting_activity (
     video_duration_seconds         Float64,
     screen_share_duration_seconds  Float64,
     _version                       UInt64
-) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, date) COMMENT 'INSIGHT_PLACEHOLDER_v1';
+) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, date, data_source) COMMENT 'INSIGHT_PLACEHOLDER_v1';
 CREATE TABLE IF NOT EXISTS silver.class_collab_chat_activity (
     insight_tenant_id             String,
     email                         String,
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS silver.class_collab_chat_activity (
     channel_messages_posted_count Float64,
     channel_posts                 Float64,
     _version                      UInt64
-) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, date) COMMENT 'INSIGHT_PLACEHOLDER_v1';
+) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, date, data_source) COMMENT 'INSIGHT_PLACEHOLDER_v1';
 CREATE TABLE IF NOT EXISTS silver.class_collab_document_activity (
     insight_tenant_id        String,
     email                    String,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS silver.class_collab_document_activity (
     shared_externally_count  Float64,
     viewed_or_edited_count   Float64,
     _version                 UInt64
-) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, date) COMMENT 'INSIGHT_PLACEHOLDER_v1';
+) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, date, data_source) COMMENT 'INSIGHT_PLACEHOLDER_v1';
 CREATE TABLE IF NOT EXISTS silver.class_ai_dev_usage (
     insight_tenant_id    String,
     email                String,
@@ -105,7 +105,10 @@ CREATE TABLE IF NOT EXISTS silver.class_ai_dev_usage (
     prs_with_cc_count    Nullable(Float64),
     prs_total_count      Nullable(Float64),
     _version             UInt64
-) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, day) COMMENT 'INSIGHT_PLACEHOLDER_v1';
+-- `tool` MUST be in the sort key — without it, ReplacingMergeTree
+-- collapses cursor and claude_code rows for the same (email, day)
+-- into one, suppressing whichever was inserted first.
+) ENGINE = ReplacingMergeTree(_version) ORDER BY (email, day, tool) COMMENT 'INSIGHT_PLACEHOLDER_v1';
 CREATE TABLE IF NOT EXISTS silver.class_ai_api_usage (
     insight_tenant_id     Nullable(String),
     source_id             Nullable(String),
