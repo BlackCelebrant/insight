@@ -3,6 +3,10 @@
 .env.*
 !.env.*.example
 up-orb.sh
+
+# docker-compose dev stack
+/compose/build/
+/compose/override.generated.yml
 __pycache__/
 *.pyc
 .venv/
