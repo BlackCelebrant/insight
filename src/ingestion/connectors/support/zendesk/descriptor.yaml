@@ -3,8 +3,9 @@
 # Loaded by insight-toolbox at reconcile time to create/update the Airbyte
 # connection for this connector.
 #
-# Streams: support_tickets, support_agents, zendesk_satisfaction_ratings,
-# support_ticket_events (Ticket Audits). TBD: zendesk_ticket_ext, Guide articles.
+# Streams: support_tickets, support_ticket_ids (slim audit-substream parent),
+# support_agents, zendesk_satisfaction_ratings, support_ticket_events (Ticket
+# Audits, fanned out over support_ticket_ids). TBD: zendesk_ticket_ext, Guide articles.
 
 name: zendesk
 # Strict semver per ADR-0015. 1.0.0: Phase-1 Bronze (tickets/agents/CSAT).
@@ -36,12 +37,16 @@ name: zendesk
 #   default_concurrency 4 (jira: 1 self-deadlocks at ~10k partitions). Also
 #   is_active emits int, group_name emits NULL. MINOR: adds a bronze stream +
 #   changes substream topology (resets the audit substream's parent state).
+# 1.3.1: review #1304 (CodeRabbit) — optional ids (assignee/requester/group/
+#   organization/default_group/author) emit NULL not ''; author_id schema
+#   nullable. (The agent-dim join now keys on tenant+source+id — silver dbt, not
+#   the manifest.) PATCH: no schema/stream change.
 # `nocode` = declarative-manifest connector (connector.yaml published to the
 # Airbyte builder), as opposed to `cdk` (a pre-built Python image registered
 # from images.cdk.image). MUST be `nocode`/absent for declarative connectors:
 # reconcile only branches on `nocode` vs `cdk` — any other value (e.g.
 # `declarative`) falls through to the cdk image path and fails with no image.
-version: "1.3.0"
+version: "1.3.1"
 type: nocode
 schedule: "0 5 * * *"       # 05:00 UTC daily
 workflow: sync               # Argo workflow template: ingestion-pipeline

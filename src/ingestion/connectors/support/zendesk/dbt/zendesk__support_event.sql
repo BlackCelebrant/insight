@@ -73,7 +73,11 @@ FROM (
     WHERE JSONExtractString(ev, 'type') IN ('Comment', 'Change')
 ) e
 INNER JOIN {{ ref('zendesk__support_agent') }} ag
-        ON ag.source_agent_id = e.author_id
+        -- tenant+source in the join key: native Zendesk agent ids collide across
+        -- instances, so id-only would cross-attribute in a multi-source store.
+        ON ag.tenant_id = e.tenant_id
+       AND ag.insight_source_id = e.source_id
+       AND ag.source_agent_id = e.author_id
 WHERE ag.person_key != ''
 {% if is_incremental() %}
   AND toDate(parseDateTimeBestEffortOrNull(e.created_at)) > (

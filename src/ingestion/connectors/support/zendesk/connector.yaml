@@ -1,11 +1,15 @@
 # Airbyte Declarative Source for zendesk — INSIGHT-459.
 #
 # Streams:
-#   1. support_tickets              — incremental, DatetimeBasedCursor on updated_at
-#   2. support_agents               — full refresh
-#   3. zendesk_satisfaction_ratings — incremental, DatetimeBasedCursor on updated_at
-#   4. support_ticket_events        — per-ticket audit log (SubstreamPartitionRouter
-#                                     over support_tickets); actor-attributed activity
+#   1.  support_tickets              — incremental, DatetimeBasedCursor on updated_at
+#   1b. support_ticket_ids           — slim (id + updated_at only) mirror of stream 1;
+#                                      the substream parent for stream 4 (keeps the
+#                                      CDK parent-record cache tiny — no metadata payload)
+#   2.  support_agents               — full refresh
+#   3.  zendesk_satisfaction_ratings — incremental, DatetimeBasedCursor on updated_at
+#   4.  support_ticket_events        — per-ticket audit log (SubstreamPartitionRouter
+#                                      over support_ticket_ids, incremental_dependency);
+#                                      actor-attributed activity
 #
 # Not yet implemented (schema locked in zendesk.md):
 #   5. zendesk_ticket_ext           — custom field key-value pairs
@@ -157,16 +161,16 @@ streams:
             value: "{{ record['id'] | string }}"
           - type: AddedFieldDefinition
             path: [assignee_id]
-            value: "{{ record['assignee_id'] | string if record.get('assignee_id') else '' }}"
+            value: "{{ record['assignee_id'] | string if record.get('assignee_id') else none }}"
           - type: AddedFieldDefinition
             path: [requester_id]
-            value: "{{ record['requester_id'] | string if record.get('requester_id') else '' }}"
+            value: "{{ record['requester_id'] | string if record.get('requester_id') else none }}"
           - type: AddedFieldDefinition
             path: [group_id]
-            value: "{{ record['group_id'] | string if record.get('group_id') else '' }}"
+            value: "{{ record['group_id'] | string if record.get('group_id') else none }}"
           - type: AddedFieldDefinition
             path: [organization_id]
-            value: "{{ record['organization_id'] | string if record.get('organization_id') else '' }}"
+            value: "{{ record['organization_id'] | string if record.get('organization_id') else none }}"
           - type: AddedFieldDefinition
             # Zendesk ticket `type`: question / incident / problem / task; null if not set
             path: [ticket_type]
@@ -371,7 +375,7 @@ streams:
             value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['id'] }}"
           - type: AddedFieldDefinition
             path: [group_id]
-            value: "{{ record['default_group_id'] | string if record.get('default_group_id') else '' }}"
+            value: "{{ record['default_group_id'] | string if record.get('default_group_id') else none }}"
           - type: AddedFieldDefinition
             # group_name resolved in Phase 2 via CustomTransformation (GET /api/v2/groups lookup).
             # NULL (not "") — Phase-1 intent is honest-NULL-until-Phase-2, and the
@@ -525,7 +529,7 @@ streams:
           data_source: { type: string }
           audit_id: { type: string }
           ticket_id: { type: string }
-          author_id: { type: string }
+          author_id: { type: ["string", "null"] }
           created_at: { type: string }
           events: { type: string }
     retriever:
@@ -593,7 +597,7 @@ streams:
           - type: AddedFieldDefinition
             # actor of the audit (who made the change) — the attribution key
             path: [author_id]
-            value: "{{ record['author_id'] | string if record.get('author_id') else '' }}"
+            value: "{{ record['author_id'] | string if record.get('author_id') else none }}"
           - type: AddedFieldDefinition
             # nested events[] kept as JSON; Silver explodes + classifies them
             path: [events]

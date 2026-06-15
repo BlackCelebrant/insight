@@ -69,7 +69,11 @@ csat AS (
         LIMIT 1 BY unique_key
     ) r
     INNER JOIN {{ ref('zendesk__support_agent') }} a
-            ON a.source_agent_id = r.assignee_id
+            -- tenant+source in the join key: Zendesk agent ids collide across
+            -- instances, so id-only would cross-attribute in a multi-source store.
+            ON a.tenant_id = r.tenant_id
+           AND a.insight_source_id = r.source_id
+           AND a.source_agent_id = r.assignee_id
     WHERE a.person_key != ''
     GROUP BY r.tenant_id, r.source_id, a.person_key, date
 ),

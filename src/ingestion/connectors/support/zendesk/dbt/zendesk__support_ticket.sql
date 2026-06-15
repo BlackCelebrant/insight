@@ -44,4 +44,8 @@ FROM (
     LIMIT 1 BY unique_key
 ) t
 LEFT JOIN {{ ref('zendesk__support_agent') }} a
-       ON a.source_agent_id = t.assignee_id
+       -- tenant+source in the join key: Zendesk agent ids collide across
+       -- instances, so id-only would cross-attribute in a multi-source store.
+       ON a.tenant_id = t.tenant_id
+      AND a.insight_source_id = t.source_id
+      AND a.source_agent_id = t.assignee_id
