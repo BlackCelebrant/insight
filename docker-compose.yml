@@ -350,6 +350,15 @@ services:
         aliases: [insight-front]
     environment:
       CSP_REMOTE: ${CSP_REMOTE:-}
+      # Production builds of the FE refuse to dev-impersonate unless the
+      # entrypoint emits window.__DEV_CONFIG__. Forwarding the wizard's
+      # dev email here is what makes the ghcr image actually render data
+      # in the compose stack. The entrypoint refuses to honor both
+      # DEV_USER_EMAIL and OIDC_* simultaneously.
+      DEV_USER_EMAIL: ${VITE_DEV_USER_EMAIL:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-}
     ports:
       - "${FRONTEND_PORT:-3000}:80"
 
