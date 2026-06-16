@@ -104,10 +104,6 @@ class CopilotOrgMetricsStream(CopilotReportsStream, IncrementalMixin):
             yield {"day": current.isoformat()}
             current += timedelta(days=1)
 
-    @staticmethod
-    def _next_day(d: str) -> str:
-        return (date.fromisoformat(d) + timedelta(days=1)).isoformat()
-
     def _record_pk_parts(self, record: dict, day: str) -> List[str]:
         """unique_key composition: {tenant}-{source}-{day}.
 

@@ -75,7 +75,8 @@ class CopilotSeatsStream(CopilotRestStream):
         if next_url:
             page = (parse_qs(urlparse(next_url).query).get("page") or [None])[0]
             if page:
-                return {"page": page}
+                # int for type-parity with the fallback branch below
+                return {"page": int(page)}
         # Fallback: no Link header — stop when the page is under-full.
         try:
             seats = (response.json() or {}).get("seats") or []
