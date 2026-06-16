@@ -302,12 +302,26 @@ cut.
 |---|---|---|
 | `projects`, `users`, `branches` | — | full snapshot each run |
 | `commits` | per-ref head **SHA** | scan graph deltas `old_head..new_head` |
-| `commit_file_changes` | — | driven by the default-branch SHA delta |
-| `merge_requests`, `issues` | `updated_at` | `updated_after` = last max updated_at |
-| MR / issue children | — | re-pulled in full when parent cursor advances |
+| `commit_file_changes` | per-project default head **SHA** | diff the default-branch SHA delta |
+| `merge_requests`, `issues` | per-project `updated_at` | `updated_after = watermark − overlap` (`ProjectUpdatedAtStream`) |
+| MR children (`merge_request_*`) | **own** per-project `updated_at` | each independently re-enumerates changed MRs, then fetches its sub-resource |
 
-Most state is per top-level stream only; MR/issue children are stateless
-(bounded by their parent, re-emitted when it changes).
+**MR children do NOT share the top-level `merge_requests` cursor.** An incremental
+parent advances its own cursor during its sync, so a child reading through it
+would be starved (0 changed MRs). Instead each child (`MergeRequestChildStream`)
+owns a private MR enumerator and its **own** per-project `updated_at` watermark —
+decoupled, independently resumable. Cost: each child re-lists MRs (the list,
+cheap); the per-MR sub-resource fetches are not duplicated.
+
+Date cursors (`merge_requests`/`issues`/MR children) use `updated_after =
+watermark − overlap` normalised to UTC `Z` (the `+offset` form must not reach
+the URL), advance to the last server-sorted record's `updated_at`, and rely on
+RMT to collapse the boundary re-emit. `merge_request_approvals` captures the
+current approver **set** (no per-approver timestamp exists on the endpoint);
+approval **timing** is derived downstream from `merge_request_notes` system
+notes. Known TODO (cross-cutting): offset-cap windowing for `commits`,
+`merge_requests`, `issues`, and the MR enumerator (×5) — fails loud at the cap
+today; windowing splits a range/window when it nears the instance max-offset.
 
 **Commits use graph (SHA) cursors, not date cursors** — more correct than dates
 because a rebase/old-dated push changes the head SHA, so the `old_head..new_head`

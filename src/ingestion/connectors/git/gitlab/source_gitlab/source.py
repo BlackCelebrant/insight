@@ -16,6 +16,16 @@ from source_gitlab.config import GitlabConfig
 from source_gitlab.streams.branches import BranchesStream
 from source_gitlab.streams.commits import CommitsStream
 from source_gitlab.streams.file_changes import CommitFileChangesStream
+from source_gitlab.streams.issues import IssuesStream
+from source_gitlab.streams.merge_request_approvals import MergeRequestApprovalsStream
+from source_gitlab.streams.merge_request_commits import MergeRequestCommitsStream
+from source_gitlab.streams.merge_request_discussions import (
+    MergeRequestDiscussionsStream,
+)
+from source_gitlab.streams.merge_request_notes import MergeRequestNotesStream
+from source_gitlab.streams.merge_request_state_events import (
+    MergeRequestStateEventsStream,
+)
 from source_gitlab.streams.merge_requests import MergeRequestsStream
 from source_gitlab.streams.projects import ProjectsStream
 from source_gitlab.streams.users import UsersStream
@@ -81,6 +91,12 @@ class SourceGitlab(AbstractSource):
                 parent=projects, branches=branches, start_date=cfg.start_date, **shared
             ),
             MergeRequestsStream(parent=projects, **shared),
+            MergeRequestCommitsStream(parent=projects, **shared),
+            MergeRequestNotesStream(parent=projects, **shared),
+            MergeRequestDiscussionsStream(parent=projects, **shared),
+            MergeRequestApprovalsStream(parent=projects, **shared),
+            MergeRequestStateEventsStream(parent=projects, **shared),
+            IssuesStream(parent=projects, **shared),
         ]
 
 
