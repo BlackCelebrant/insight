@@ -107,13 +107,40 @@ jobs:
       - name: Deploy Insight chart
         run: |
           set -euo pipefail
+          dump_diagnostics() {
+            echo "::group::helm status"
+            helm -n "${INSIGHT_NAMESPACE}" status insight || true
+            echo "::endgroup::"
+
+            echo "::group::insight resources"
+            kubectl -n "${INSIGHT_NAMESPACE}" get all,pvc,secret,configmap,job,pod -o wide || true
+            echo "::endgroup::"
+
+            echo "::group::insight pod descriptions"
+            kubectl -n "${INSIGHT_NAMESPACE}" describe pods || true
+            echo "::endgroup::"
+
+            echo "::group::insight pod logs"
+            while IFS= read -r pod; do
+              echo "----- ${pod} -----"
+              kubectl -n "${INSIGHT_NAMESPACE}" logs "${pod}" --all-containers --prefix --tail=200 || true
+            done < <(kubectl -n "${INSIGHT_NAMESPACE}" get pods -o name 2>/dev/null || true)
+            echo "::endgroup::"
+
+            echo "::group::cluster events"
+            kubectl get events -A --sort-by=.lastTimestamp || true
+            echo "::endgroup::"
+          }
+
+          trap dump_diagnostics ERR
+
           helm upgrade --install insight charts/insight \
             --namespace "${INSIGHT_NAMESPACE}" \
             --create-namespace \
             -f "${FUNCTIONAL_VALUES}" \
             --wait \
             --wait-for-jobs \
-            --timeout 15m
+            --timeout 5m
 
       - name: Verify Insight workloads
         run: |
@@ -128,11 +155,32 @@ jobs:
         if: failure()
         run: |
           set -euo pipefail
+          echo "::group::all pods"
           kubectl get pods -A -o wide || true
+          echo "::endgroup::"
+
+          echo "::group::insight resources"
+          kubectl -n "${INSIGHT_NAMESPACE}" get all,pvc,secret,configmap,job,pod -o wide || true
+          echo "::endgroup::"
+
+          echo "::group::insight pod descriptions"
           kubectl -n "${INSIGHT_NAMESPACE}" describe pods || true
-          kubectl -n "${INSIGHT_NAMESPACE}" logs --all-containers --prefix --tail=200 -l app.kubernetes.io/part-of=insight || true
+          echo "::endgroup::"
+
+          echo "::group::insight pod logs"
+          while IFS= read -r pod; do
+            echo "----- ${pod} -----"
+            kubectl -n "${INSIGHT_NAMESPACE}" logs "${pod}" --all-containers --prefix --tail=200 || true
+          done < <(kubectl -n "${INSIGHT_NAMESPACE}" get pods -o name 2>/dev/null || true)
+          echo "::endgroup::"
+
+          echo "::group::cluster events"
           kubectl get events -A --sort-by=.lastTimestamp || true
+          echo "::endgroup::"
+
+          echo "::group::helm status"
           helm -n "${INSIGHT_NAMESPACE}" status insight || true
+          echo "::endgroup::"
 
       - name: Delete K3s cluster
         if: always()
