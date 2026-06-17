@@ -317,20 +317,21 @@ mariadb:
     database: "" # MUST match mariadb.database
     existingSecret: "insight-db-creds"
   # Per-service MariaDB databases (ADR-0006 — each backend service owns
-  # its own DB) are now provisioned by a post-install / post-upgrade
-  # Helm Hook Job (see templates/mariadb-init-svcdbs-job.yaml). The Job
-  # authenticates as MariaDB root using `mariadb-root-password` from
-  # `insight-db-creds`, runs idempotent CREATE DATABASE + GRANT against
-  # whatever `mariadb.host` resolves to — works for both bundled
+  # its own DB) are provisioned by templates/mariadb-init-svcdbs-job.yaml:
+  # a regular Job on fresh installs and a pre-upgrade Hook on upgrades.
+  # The Job authenticates as MariaDB root using `mariadb-root-password`
+  # from `insight-db-creds`, runs idempotent CREATE DATABASE + GRANT
+  # against whatever `mariadb.host` resolves to — works for both bundled
   # (`mariadb.deploy=true`) and external (layered gitops with
   # `mariadb.deploy=false`) modes from a SINGLE source of truth.
   #
   # Replaces the previous bundled-only `mariadb-initdb-scripts.yaml`
-  # ConfigMap. The earlier `pre-install` Hook had a chicken-and-egg with
-  # the regular-template `insight-db-creds`; the new Hook uses
-  # `post-install` so the Secret is already applied when the Job runs,
-  # and the Job has an internal wait-for-MariaDB loop so the bundled
-  # subchart's first-boot delay doesn't matter.
+  # ConfigMap. The earlier unconditional `pre-install` Hook had a
+  # chicken-and-egg with fresh bundled installs: neither
+  # `insight-db-creds` nor the bundled MariaDB Service existed yet. The
+  # install-time regular Job lets Helm create those resources first; the
+  # internal wait-for-MariaDB loop handles the bundled subchart's
+  # first-boot delay.
   # Reset of a legacy value persisted in helm release storage from a
   # pre-#406 chart version (`insight-mariadb-initdb-scripts`). The
   # ConfigMap it referenced was deleted in #406; the bitnami subchart

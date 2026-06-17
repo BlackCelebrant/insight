@@ -27,17 +27,14 @@ chart's contract. Bundled installs run with
 admin (incl. CREATE DATABASE). External installs MUST grant the
 service user CREATE DATABASE — that's the operator-side contract.
 
-Hook timing: `pre-install,pre-upgrade`. Mirrors the MariaDB Hook —
-the DB must exist BEFORE application pods that read it (analytics-api,
-ingestion workflows) start, otherwise helm `--wait` blocks on their
-CrashLoopBackOff'd pods until timeout and never reaches post-*
-hooks.
+Install timing: regular resource. Fresh installs create the Secret,
+ClickHouse StatefulSet/Service, this Job, and app Deployments in the
+same release; the Job waits for ClickHouse and creates the configured
+databases while app pods retry startup.
 
-Prerequisite: `insight-db-creds` must exist in the namespace BEFORE
-helm install/upgrade runs (gitops mode applies it first, upgrades
-inherit it from prior install). Fresh autoGenerate-mode installs on
-a brand-new namespace need the Secret template itself converted to a
-hook — tracked separately.
+Upgrade timing: `pre-upgrade` Hook. On upgrades the database already
+exists from the previous release, so the Job can safely run before new
+app pods roll.
 
 Idempotent. `CREATE DATABASE IF NOT EXISTS` is a no-op on second-and-
 later runs. Connector-specific bronze databases beyond the configured
@@ -55,10 +52,12 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "insight.fullname" . }}-clickhouse-init-svcdbs
+  {{- if .Release.IsUpgrade }}
   annotations:
-    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "5"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  {{- end }}
   labels:
     {{- include "insight.labels" . | nindent 4 }}
     app.kubernetes.io/component: clickhouse-init

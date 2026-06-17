@@ -17,7 +17,6 @@ env:
   CLUSTER_NAME: insight-functional
   FUNCTIONAL_VALUES: .github/ci/insight-functional-values.yaml
   INSIGHT_NAMESPACE: insight
-  DB_CREDS_SECRET: insight-db-creds
 
 jobs:
   cluster-smoke:
@@ -104,16 +103,6 @@ jobs:
             -f "${FUNCTIONAL_VALUES}" \
             >/tmp/insight-rendered.yaml
           test -s /tmp/insight-rendered.yaml
-
-      - name: Create CI database credentials
-        run: |
-          set -euo pipefail
-          kubectl create namespace "${INSIGHT_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n "${INSIGHT_NAMESPACE}" create secret generic "${DB_CREDS_SECRET}" \
-            --from-literal=clickhouse-password="$(openssl rand -hex 12)" \
-            --from-literal=mariadb-password="$(openssl rand -hex 12)" \
-            --from-literal=mariadb-root-password="$(openssl rand -hex 12)" \
-            --from-literal=redis-password="$(openssl rand -hex 12)"
 
       - name: Deploy Insight chart
         run: |
