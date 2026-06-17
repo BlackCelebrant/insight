@@ -1,0 +1,57 @@
+name: Functional K3s Smoke
+
+# Phase 1 for the functional-test CI flow:
+# prove that a GitHub-hosted runner can create an ephemeral K3s cluster and
+# that kubectl can reach it. Later phases will add Helm rendering/deploy.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  K3D_VERSION: v5.8.3
+  K3S_IMAGE: rancher/k3s:v1.32.5-k3s1
+  CLUSTER_NAME: insight-functional
+
+jobs:
+  cluster-smoke:
+    name: Create K3s Cluster
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install k3d
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh \
+            | TAG="${K3D_VERSION}" bash
+          k3d version
+
+      - name: Create K3s cluster
+        run: |
+          set -euo pipefail
+          k3d cluster create "${CLUSTER_NAME}" \
+            --image "${K3S_IMAGE}" \
+            --agents 1 \
+            --wait \
+            --timeout 120s
+
+      - name: Verify cluster access
+        run: |
+          set -euo pipefail
+          kubectl cluster-info
+          kubectl get nodes -o wide
+          kubectl -n kube-system get pods -o wide
+
+      - name: Delete K3s cluster
+        if: always()
+        run: |
+          set -euo pipefail
+          k3d cluster delete "${CLUSTER_NAME}" || true
