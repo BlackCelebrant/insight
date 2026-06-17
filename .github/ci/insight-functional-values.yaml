@@ -1,0 +1,85 @@
+##
+## Minimal values for the fork-safe functional K3s workflow.
+## Phase 2 uses this file for `helm template` only; later phases will deploy
+## the same shape into the ephemeral cluster.
+##
+
+global:
+  storageClass: local-path
+
+credentials:
+  deploymentMode: helm
+  autoGenerate: true
+
+ingestion:
+  templates:
+    enabled: false
+  dataQuality:
+    enabled: false
+
+clickhouse:
+  deploy: true
+  database: insight
+  username: insight
+  image:
+    tag: "25.3"
+  persistence:
+    size: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 1, memory: 1Gi }
+
+mariadb:
+  deploy: true
+  database: insight
+  username: insight
+  auth:
+    username: insight
+    database: insight
+  primary:
+    persistence:
+      size: 1Gi
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 250m, memory: 384Mi }
+
+redis:
+  deploy: true
+  master:
+    persistence:
+      size: 512Mi
+    resources:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits: { cpu: 100m, memory: 128Mi }
+
+redpanda:
+  deploy: false
+  brokers: "redpanda-disabled:9093"
+
+apiGateway:
+  replicaCount: 1
+  image:
+    tag: "2026.06.15.14.54-866e47b"
+  authDisabled: true
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+analyticsApi:
+  replicaCount: 1
+  image:
+    tag: "2026.06.15.14.54-866e47b"
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 384Mi }
+
+identity:
+  deploy: false
+
+frontend:
+  replicaCount: 1
+  image:
+    tag: "2026.06.11.15.04-bddede7"
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 100m, memory: 128Mi }

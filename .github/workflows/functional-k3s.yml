@@ -1,8 +1,8 @@
 name: Functional K3s Smoke
 
-# Phase 1 for the functional-test CI flow:
-# prove that a GitHub-hosted runner can create an ephemeral K3s cluster and
-# that kubectl can reach it. Later phases will add Helm rendering/deploy.
+# Early phases for the functional-test CI flow:
+# 1. prove that a GitHub-hosted runner can create a healthy ephemeral K3s cluster
+# 2. prove that the Insight umbrella chart renders with the CI overlay
 
 on:
   workflow_dispatch:
@@ -14,10 +14,11 @@ env:
   K3D_VERSION: v5.8.3
   K3S_IMAGE: rancher/k3s:v1.32.5-k3s1
   CLUSTER_NAME: insight-functional
+  FUNCTIONAL_VALUES: .github/ci/insight-functional-values.yaml
 
 jobs:
   cluster-smoke:
-    name: Create K3s Cluster
+    name: K3s and Helm Render
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -26,6 +27,9 @@ jobs:
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
 
       - name: Install k3d
         run: |
@@ -87,6 +91,16 @@ jobs:
           kubectl get pods -A -o wide >&2
           kubectl get events -A --sort-by=.lastTimestamp >&2
           exit 1
+
+      - name: Render Insight chart
+        run: |
+          set -euo pipefail
+          helm dependency update charts/insight
+          helm template insight charts/insight \
+            --namespace insight \
+            -f "${FUNCTIONAL_VALUES}" \
+            >/tmp/insight-rendered.yaml
+          test -s /tmp/insight-rendered.yaml
 
       - name: Delete K3s cluster
         if: always()
