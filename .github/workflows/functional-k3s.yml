@@ -3,6 +3,7 @@ name: Functional K3s Smoke
 # Early phases for the functional-test CI flow:
 # 1. prove that a GitHub-hosted runner can create a healthy ephemeral K3s cluster
 # 2. prove that the Insight umbrella chart renders with the CI overlay
+# 3. deploy the rendered chart into the ephemeral cluster and wait for workloads
 
 on:
   workflow_dispatch:
@@ -15,12 +16,13 @@ env:
   K3S_IMAGE: rancher/k3s:v1.32.5-k3s1
   CLUSTER_NAME: insight-functional
   FUNCTIONAL_VALUES: .github/ci/insight-functional-values.yaml
+  INSIGHT_NAMESPACE: insight
 
 jobs:
   cluster-smoke:
-    name: K3s and Helm Render
+    name: K3s Helm Deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -97,10 +99,40 @@ jobs:
           set -euo pipefail
           helm dependency update charts/insight
           helm template insight charts/insight \
-            --namespace insight \
+            --namespace "${INSIGHT_NAMESPACE}" \
             -f "${FUNCTIONAL_VALUES}" \
             >/tmp/insight-rendered.yaml
           test -s /tmp/insight-rendered.yaml
+
+      - name: Deploy Insight chart
+        run: |
+          set -euo pipefail
+          helm upgrade --install insight charts/insight \
+            --namespace "${INSIGHT_NAMESPACE}" \
+            --create-namespace \
+            -f "${FUNCTIONAL_VALUES}" \
+            --wait \
+            --wait-for-jobs \
+            --timeout 15m
+
+      - name: Verify Insight workloads
+        run: |
+          set -euo pipefail
+          kubectl -n "${INSIGHT_NAMESPACE}" get pods -o wide
+          kubectl -n "${INSIGHT_NAMESPACE}" get svc
+          kubectl -n "${INSIGHT_NAMESPACE}" wait pods --all \
+            --for=condition=Ready \
+            --timeout=5m
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          kubectl get pods -A -o wide || true
+          kubectl -n "${INSIGHT_NAMESPACE}" describe pods || true
+          kubectl -n "${INSIGHT_NAMESPACE}" logs --all-containers --prefix --tail=200 -l app.kubernetes.io/part-of=insight || true
+          kubectl get events -A --sort-by=.lastTimestamp || true
+          helm -n "${INSIGHT_NAMESPACE}" status insight || true
 
       - name: Delete K3s cluster
         if: always()
