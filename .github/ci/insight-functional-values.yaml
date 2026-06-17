@@ -23,6 +23,7 @@ clickhouse:
   username: insight
   image:
     tag: "25.3"
+  initDatabases: []
   persistence:
     size: 1Gi
   resources:
