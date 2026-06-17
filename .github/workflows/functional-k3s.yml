@@ -147,8 +147,10 @@ jobs:
           set -euo pipefail
           kubectl -n "${INSIGHT_NAMESPACE}" get pods -o wide
           kubectl -n "${INSIGHT_NAMESPACE}" get svc
-          kubectl -n "${INSIGHT_NAMESPACE}" wait pods --all \
-            --for=condition=Ready \
+          kubectl -n "${INSIGHT_NAMESPACE}" rollout status deployment --all --timeout=5m
+          kubectl -n "${INSIGHT_NAMESPACE}" rollout status statefulset --all --timeout=5m
+          kubectl -n "${INSIGHT_NAMESPACE}" wait job --all \
+            --for=condition=Complete \
             --timeout=5m
 
       - name: Dump diagnostics on failure
