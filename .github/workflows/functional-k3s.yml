@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 env:
-  K3D_VERSION: v5.8.3
-  K3S_IMAGE: rancher/k3s:v1.32.5-k3s1
+  K3D_VERSION: v5.9.0
+  K3S_IMAGE: rancher/k3s:v1.36.1-k3s1
   CLUSTER_NAME: insight-functional
   FUNCTIONAL_VALUES: .github/ci/insight-functional-values.yaml
   INSIGHT_NAMESPACE: insight
