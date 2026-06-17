@@ -39,16 +39,54 @@ jobs:
           set -euo pipefail
           k3d cluster create "${CLUSTER_NAME}" \
             --image "${K3S_IMAGE}" \
+            --k3s-arg "--disable=traefik@server:0" \
             --agents 1 \
             --wait \
             --timeout 120s
 
-      - name: Verify cluster access
+      - name: Verify cluster health
         run: |
           set -euo pipefail
           kubectl cluster-info
           kubectl get nodes -o wide
           kubectl -n kube-system get pods -o wide
+
+          kubectl wait nodes --all --for=condition=Ready --timeout=120s
+
+          deadline=$((SECONDS + 120))
+          while (( SECONDS < deadline )); do
+            unhealthy="$(
+              kubectl get pods -A \
+                --field-selector=status.phase!=Succeeded \
+                -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\t"}{.status.phase}{"\t"}{range .status.containerStatuses[*]}{.ready}{":"}{.state.waiting.reason}{":"}{.state.terminated.reason}{" "}{end}{"\n"}{end}' \
+                | awk '
+                    $2 != "Running" { print; next }
+                    {
+                      for (i = 3; i <= NF; i++) {
+                        split($i, s, ":")
+                        if (s[1] != "true" || s[2] != "" || s[3] != "") {
+                          print
+                          next
+                        }
+                      }
+                    }
+                  '
+            )"
+
+            if [[ -z "$unhealthy" ]]; then
+              echo "Cluster is healthy."
+              exit 0
+            fi
+
+            echo "Waiting for healthy cluster:"
+            echo "$unhealthy"
+            sleep 5
+          done
+
+          echo "Cluster did not become healthy before timeout." >&2
+          kubectl get pods -A -o wide >&2
+          kubectl get events -A --sort-by=.lastTimestamp >&2
+          exit 1
 
       - name: Delete K3s cluster
         if: always()
