@@ -41,6 +41,7 @@ mod m20260611_000001_ai_bullet_dept_reconcile;
 mod m20260612_000001_team_git_bullet;
 mod m20260613_000001_dept_ai_distribution;
 mod m20260613_000002_member_ai_values;
+mod m20260613_000003_repair_member_prs_collision;
 
 #[cfg(test)]
 mod live_tests;
@@ -94,6 +95,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260612_000001_team_git_bullet::Migration),
             Box::new(m20260613_000001_dept_ai_distribution::Migration),
             Box::new(m20260613_000002_member_ai_values::Migration),
+            Box::new(m20260613_000003_repair_member_prs_collision::Migration),
         ]
     }
 }

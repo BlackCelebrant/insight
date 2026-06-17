@@ -1,4 +1,4 @@
-//! Per-person AI metric values for a roster (`…0043`), completing the
+//! Per-person AI metric values for a roster (`…0049`), completing the
 //! `…0040-42` member-values set (Task Delivery / Collaboration / Git) so the
 //! team view can compare each member's AI metrics against their own department
 //! (the AI department distribution lives in `…0048`).
@@ -20,7 +20,7 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 const ZERO_TENANT: &str = "00000000000000000000000000000000";
-const MEMBER_VALUES_AI_HEX: &str = "00000000000000000001000000000043";
+const MEMBER_VALUES_AI_HEX: &str = "00000000000000000001000000000049";
 
 /// Per-person AI wide aggregate, copied verbatim from
 /// `m20260613_000001_dept_ai_distribution::ai_wide_aggregate_pp`.
@@ -69,7 +69,7 @@ fn ai_array_join_kv() -> &'static str {
      ] AS kv"
 }
 
-fn ai_member_values_query() -> String {
+pub(crate) fn ai_member_values_query() -> String {
     format!(
         "SELECT person_id, kv.1 AS metric_key, kv.2 AS value \
          FROM ({pp}) pp \
