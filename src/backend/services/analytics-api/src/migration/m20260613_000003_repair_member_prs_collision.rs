@@ -58,13 +58,11 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Leave …0043 as Member PRs Merged; only drop the …0049 AI seed.
-        let db = manager.get_connection();
-        db.execute_unprepared(&format!(
-            "DELETE FROM metrics WHERE id = UNHEX('{MEMBER_VALUES_AI_HEX}')"
-        ))
-        .await?;
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+        // No-op. This migration only restores/ensures rows OWNED by earlier
+        // migrations (…0043 by m20260605_000001, …0049 by m20260613_000002) —
+        // it creates nothing of its own. Rolling it back must not delete those
+        // rows, which the still-applied earlier migrations expect to exist.
         Ok(())
     }
 }

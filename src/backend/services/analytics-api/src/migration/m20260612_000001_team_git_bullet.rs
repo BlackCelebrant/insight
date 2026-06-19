@@ -37,8 +37,8 @@ const GIT_PP: &str = "SELECT person_id, any(org_unit_id) AS org_unit_id, \
     sumIf(metric_value, metric_key = 'prs_created') AS prs_created, \
     sumIf(metric_value, metric_key = 'prs_merged') AS prs_merged, \
     countIf(metric_key = 'commits' AND metric_value > 0) AS active_days, \
-    quantileExactIf(0.5)(metric_value, metric_key = 'pr_cycle_time_h') AS pr_cycle_time_h, \
-    quantileExactIf(0.5)(metric_value, metric_key = 'pr_size') AS pr_size \
+    quantileExactIfOrNull(0.5)(metric_value, metric_key = 'pr_cycle_time_h') AS pr_cycle_time_h, \
+    quantileExactIfOrNull(0.5)(metric_value, metric_key = 'pr_size') AS pr_size \
     FROM insight.git_bullet_rows GROUP BY person_id";
 
 /// ARRAY JOIN unpivot for the git bullet, copied verbatim from `…0018`.
@@ -59,7 +59,7 @@ const GIT_KV: &str = "ARRAY JOIN [('commits', toFloat64(commits)), \
 fn team_git_query() -> String {
     format!(
         "SELECT p.metric_key AS metric_key, \
-                avgIf(p.v_period, isNotNull(p.v_period)) AS value, \
+                avgIfOrNull(p.v_period, isNotNull(p.v_period)) AS value, \
                 avg(c.team_median) AS median, \
                 avg(c.team_min) AS range_min, \
                 avg(c.team_max) AS range_max, \
@@ -73,11 +73,11 @@ fn team_git_query() -> String {
          ) p \
          LEFT JOIN ( \
              SELECT metric_key, org_unit_id, \
-                    quantileExactIf(0.5)(v_period, isNotNull(v_period)) AS team_median, \
+                    quantileExactIfOrNull(0.5)(v_period, isNotNull(v_period)) AS team_median, \
                     minIf(v_period, isNotNull(v_period)) AS team_min, \
                     maxIf(v_period, isNotNull(v_period)) AS team_max, \
-                    quantileExactIf(0.25)(v_period, isNotNull(v_period)) AS team_p25, \
-                    quantileExactIf(0.75)(v_period, isNotNull(v_period)) AS team_p75, \
+                    quantileExactIfOrNull(0.25)(v_period, isNotNull(v_period)) AS team_p25, \
+                    quantileExactIfOrNull(0.75)(v_period, isNotNull(v_period)) AS team_p75, \
                     countIf(isNotNull(v_period)) AS team_n \
              FROM ( \
                  SELECT person_id, org_unit_id, kv.1 AS metric_key, kv.2 AS v_period \
@@ -130,8 +130,9 @@ mod tests {
         }
         assert!(!q.contains("any(c.team_"), "must blend (avg), not any()");
         assert!(q.contains("toFloat64(count(p.v_period)) AS n"));
-        // Git value convention: avgIf over non-null period values.
-        assert!(q.contains("avgIf(p.v_period, isNotNull(p.v_period)) AS value"));
+        // Git value convention: avgIfOrNull over non-null period values
+        // (NULL — not NaN — on an empty set, so isNotNull-gated reads skip it).
+        assert!(q.contains("avgIfOrNull(p.v_period, isNotNull(p.v_period)) AS value"));
     }
 
     #[test]

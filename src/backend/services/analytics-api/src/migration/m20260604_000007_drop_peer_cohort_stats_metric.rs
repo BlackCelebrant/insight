@@ -36,7 +36,7 @@ impl MigrationTrait for Migration {
             .execute_unprepared(&format!(
                 "INSERT INTO metrics (id, insight_tenant_id, name, description, query_ref, is_enabled) \
                  VALUES (UNHEX('{ID}'), UNHEX('{ZERO_TENANT}'), '{NAME}', '{DESCRIPTION}', '{qr}', 1) \
-                 ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), query_ref=VALUES(query_ref)",
+                 ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), query_ref=VALUES(query_ref), is_enabled=VALUES(is_enabled)",
                 qr = QUERY_REF.replace('\'', "''"),
             ))
             .await?;
