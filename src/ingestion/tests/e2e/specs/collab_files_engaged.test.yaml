@@ -1,11 +1,23 @@
 spec_version: 1
 description: >
-  Per-metric E2E check for m365_files_engaged (#1413). Seeds
-  bronze_m365.onedrive_activity + bronze_m365.sharepoint_activity for 3 people in
-  one team and asserts the IC Bullet Collaboration metric (…0012).
-  m365_files_engaged = Σ viewedOrEditedFileCount across BOTH products and the
-  period. alice has both products (30 + 20 = 50) to pin the cross-product sum.
-  value = member, median/range = team.
+  Metric: m365_files_engaged — IC Bullet Collaboration (…0012), #1413.
+  m365_files_engaged = Σ viewed_or_edited_count over the period, summed ACROSS
+  both document products (OneDrive + SharePoint).
+
+  Path (bronze → silver → gold):
+    • bronze_m365.onedrive_activity   → staging m365__collab_document_activity_onedrive   → silver.class_collab_document_activity
+    • bronze_m365.sharepoint_activity → staging m365__collab_document_activity_sharepoint → silver.class_collab_document_activity
+    → insight.collab_bullet_rows (gold) → metric …0012.
+
+  Team (department `org_unit_id` — the peer group the median/range span):
+    • alice — 30 OneDrive + 20 SharePoint = 50  (pins the cross-product sum)
+    • bob   — 15 OneDrive                 = 15
+    • carol —  5 SharePoint               =  5
+    team {50, 15, 5} → median 15, range [5, 50].
+
+  One case, asserting alice (value = member, median/range = team):
+    value 50, median 15, range [5, 50]. Teeth: alice's OneDrive row is a verbatim
+    duplicate → must dedup (still 50, not 80).
 
 bronze:
   bronze_bamboohr.employees:

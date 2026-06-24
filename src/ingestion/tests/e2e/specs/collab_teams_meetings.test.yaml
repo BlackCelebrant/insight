@@ -1,10 +1,23 @@
 spec_version: 1
 description: >
-  Per-metric E2E check for teams_meetings (#1413). Seeds
-  bronze_m365.teams_activity meetingsAttendedCount for 3 people in one team and
-  asserts the IC Bullet Collaboration metric (…0012). teams_meetings =
-  sumIf(meetings_attended, data_source = insight_m365) — the m365-only slice of
-  meetings_count (equal here, no zoom). value = member, median/range = team.
+  Metric: teams_meetings — IC Bullet Collaboration (…0012), #1413.
+  teams_meetings = sumIf(meetings_attended, data_source = insight_m365) — the
+  M365-only slice of meetings_count. Equal to meetings_count here (no Zoom data).
+
+  Path (bronze → silver → gold):
+    • bronze_m365.teams_activity → staging m365__collab_meeting_activity → silver.class_collab_meeting_activity
+      (Zoom rows excluded — teams_meetings filters data_source = insight_m365)
+    → insight.collab_bullet_rows (gold) → metric …0012.
+
+  Team (department `org_unit_id` — the peer group the median/range span):
+    • alice — 4 meetings
+    • bob   — 2
+    • carol — 1
+    team {4, 2, 1} → median 2, range [1, 4].
+
+  One case, asserting alice (value = member, median/range = team):
+    value 4, median 2, range [1, 4]. Teeth: alice's row is a verbatim duplicate
+    (same unique_key) → must dedup to 4, not 8.
 
 bronze:
   bronze_bamboohr.employees:

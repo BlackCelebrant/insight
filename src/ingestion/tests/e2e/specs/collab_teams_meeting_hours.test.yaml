@@ -1,11 +1,26 @@
 spec_version: 1
 description: >
-  Per-metric E2E check for teams_meeting_hours (#1413). Seeds
-  bronze_m365.teams_activity durations for 3 people in one team and asserts the
-  IC Bullet Collaboration metric (…0012). teams_meeting_hours =
-  sumIf(greatest(audio,video,screenShare)/3600, data_source = insight_m365) —
-  the m365-only slice of meeting_hours (equal to it here, no zoom). value =
-  member, median/range = team.
+  Metric: teams_meeting_hours — IC Bullet Collaboration (…0012), #1413.
+  teams_meeting_hours = sumIf(greatest(audio, video, screenShare) seconds / 3600,
+  data_source = insight_m365) — the M365-only slice of meeting_hours. Per row the
+  duration is the LONGEST modality (not the sum). Equal to meeting_hours here (no
+  Zoom data).
+
+  Path (bronze → silver → gold):
+    • bronze_m365.teams_activity → staging m365__collab_meeting_activity → silver.class_collab_meeting_activity
+      (Zoom rows excluded — teams_meeting_hours filters data_source = insight_m365)
+    → insight.collab_bullet_rows (gold) → metric …0012.
+
+  Team (department `org_unit_id` — the peer group the median/range span):
+    • alice — greatest(2h audio, 1h video, 0) = 2.0h
+    • bob   — 1h audio                        = 1.0h
+    • carol — 30m audio                       = 0.5h
+    team {2.0, 1.0, 0.5} → median 1.0, range [0.5, 2.0].
+
+  One case, asserting alice (value = member, median/range = team):
+    value 2.0, median 1.0, range [0.5, 2.0]. Teeth: alice's row is a verbatim
+    duplicate → must dedup (still 2.0, not 4.0); duration is the longest modality
+    (alice's 2h audio beats 1h video → 2.0, not 3.0).
 
 bronze:
   bronze_bamboohr.employees:

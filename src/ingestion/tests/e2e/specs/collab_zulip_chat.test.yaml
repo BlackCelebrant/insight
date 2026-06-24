@@ -1,10 +1,25 @@
 spec_version: 1
-description: >-
-  Zulip chat activity flows bronze → silver class_collab_chat_activity (via
-  union_by_tag) → gold insight.collab_bullet_rows (Branch 4b,
-  data_source='insight_zulip_proxy') → IC Bullet Collaboration metric_key
-  `zulip_messages_sent`. Mirrors collab_emails_sent: alice's own value vs her
-  team's median/range, with a bronze duplicate that must dedup.
+description: >
+  Metric: zulip_messages_sent — IC Bullet Collaboration (…0012), #1413.
+  zulip_messages_sent = Σ total_chat_messages over the period
+  (data_source insight_zulip_proxy). Zulip is chat-only.
+
+  Path (bronze → silver → gold):
+    • bronze_zulip_proxy.users + bronze_zulip_proxy.messages → staging zulip__collab_chat_activity → silver.class_collab_chat_activity
+      (users supply the email that joins to a person; messages carry per-sender counts)
+    → insight.collab_bullet_rows (gold, data_source insight_zulip_proxy) → metric …0012.
+
+  Team (department `org_unit_id` — the peer group the median/range span):
+    • alice — 40 messages
+    • bob   — 20
+    • carol — 10
+    team {40, 20, 10} → median 20, range [10, 40].
+
+  One case, asserting alice (value = member, median/range = team):
+    value 40, median 20, range [10, 40]. Teeth: alice's message row is a
+    verbatim duplicate (same `uniq`) → must dedup to 40, not 80; the bullet
+    exposes 21 FE-visible keys (Zulip add: 20 → 21); slack_dm_ratio is null
+    (no Slack seeded).
 
 # bronze — seed fixture. Key = TABLE NAME. People (org_unit) come from
 # bamboohr; Zulip users supply the emails that join to them; Zulip messages

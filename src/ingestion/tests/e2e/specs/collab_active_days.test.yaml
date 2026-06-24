@@ -11,14 +11,14 @@ description: >
     • bronze_m365.onedrive_activity → staging m365__collab_document_activity_*    → silver.class_collab_document_activity
     → insight.collab_bullet_rows (gold) → metric …0012.
 
-  Team (the peer group median+range are computed over — one department here;
+  Team (department `org_unit_id` — the peer group the median/range span;
   cross-class coverage exercises all three silver classes):
     • alice — active via EMAIL on 2 days (01-05, 01-06)  → 2
     • bob   — active via CHAT  (1 day)                    → 1
     • carol — active via DOCS  (1 day)                    → 1
     team {2, 1, 1} → median 1, range [1, 2].
 
-  One case, asserting alice (value = member, median+range = team):
+  One case, asserting alice (value = member, median/range = team):
     value 2, median 1, range [1, 2]. Teeth: a recv/read-only day (01-07,
     sendCount=0) must NOT count; a duplicate 01-05 row must dedup, not double.
 

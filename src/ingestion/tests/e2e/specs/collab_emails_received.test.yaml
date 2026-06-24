@@ -8,6 +8,10 @@ description: >
   the team distribution over the member's department (`org_unit_id` = Engineering)
   — counting only department members with data in that window.
 
+  Path (bronze → silver → gold):
+    • bronze_m365.email_activity → staging m365__collab_email_activity → silver.class_collab_email_activity
+    → insight.collab_bullet_rows (gold) → metric …0012.
+
   Test design — alice's receives are placed on/around the bounds of each window
   so every period sum proves inclusive [ge, le] bounds and exclusion just outside:
 

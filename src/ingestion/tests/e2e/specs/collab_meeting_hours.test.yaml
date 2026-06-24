@@ -8,6 +8,11 @@ description: >
   over the person's rows, summed ACROSS both sources (Teams + Zoom are additive;
   Zulip is chat-only and does NOT feed meeting_hours).
 
+  Path (bronze → silver → gold):
+    • bronze_m365.teams_activity → staging m365__collab_meeting_activity → silver.class_collab_meeting_activity
+    • bronze_zoom.participants   → staging zoom__collab_meeting_activity  → silver.class_collab_meeting_activity
+    → insight.collab_bullet_rows (gold) → metric …0012.
+
   Data-source matrix via a one-department (Engineering) roster, one case per person:
     • alice — Teams (1.0h) + Zoom (1.0h)  → COMBINED 2.0h  (proves cross-source sum)
     • bob   — Teams only (1.5h)

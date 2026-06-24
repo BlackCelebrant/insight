@@ -1,9 +1,23 @@
 spec_version: 1
 description: >
-  Per-metric E2E check for m365_teams_chats (#1413). Seeds
-  bronze_m365.teams_activity for 3 people in one team and asserts the IC Bullet
-  Collaboration metric (…0012). total_chat_messages = privateChatMessageCount +
-  teamChatMessageCount, summed over the period. value = member, median/range = team.
+  Metric: m365_teams_chats — IC Bullet Collaboration (…0012), #1413.
+  m365_teams_chats = Σ total_chat_messages over the period, where
+  total_chat_messages = privateChatMessageCount + teamChatMessageCount
+  (data_source insight_m365).
+
+  Path (bronze → silver → gold):
+    • bronze_m365.teams_activity → staging m365__collab_chat_activity → silver.class_collab_chat_activity
+    → insight.collab_bullet_rows (gold) → metric …0012.
+
+  Team (department `org_unit_id` — the peer group the median/range span):
+    • alice — 15 private + 25 team = 40
+    • bob   — 10 + 10             = 20
+    • carol —  5 +  5             = 10
+    team {40, 20, 10} → median 20, range [10, 40].
+
+  One case, asserting alice (value = member, median/range = team):
+    value 40, median 20, range [10, 40]. Teeth: alice's row is a verbatim
+    duplicate (same unique_key) → must dedup to 40, not 80.
 
 bronze:
   bronze_bamboohr.employees:
