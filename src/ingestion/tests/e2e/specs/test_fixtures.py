@@ -50,6 +50,13 @@ def test_e2e_metric_smoke(
     staging, silver = dbt_runner.derive_selectors(test_yaml.touched_tables)
     if staging:
         dbt_runner.build(" ".join(f"+{m}" for m in staging), worker_ctx=worker_ctx)
+        # Record staging models too: they live in the `staging` schema and are
+        # read by the silver models via union_by_tag. Without this, a prior
+        # test's staging rows (e.g. dates this test doesn't re-seed) survive into
+        # the silver rebuild and contaminate the gold-view aggregates of later
+        # tests that touch the same class. See per-metric collab specs.
+        for st in staging:
+            ch_seeder.ledger.record("staging", st)
     if silver:
         dbt_runner.build(" ".join(silver), worker_ctx=worker_ctx)
         for cls in silver:
