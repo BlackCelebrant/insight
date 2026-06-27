@@ -1,7 +1,13 @@
 spec_version: 1
 description: >
-  cc_sessions (Claude Code Sessions) — Σ session_count per person
-  (session_count ← total_sessions). gold insight.ai_bullet_rows → IC Bullet AI.
+  Metric: cc_sessions — IC Bullet AI (…0013), #1440.
+  How it's computed (bronze → silver → gold):
+    • bronze: Claude Code daily per-user metrics (session count)
+    • silver: deduped to one row per user/day carrying the session count
+    • gold:   metric = sum of Claude Code sessions over the window
+
+  Team (median/range = the person's department):
+    alice 12 · bob 6 · carol 3 → median 6, range [3, 12].
 
 bronze:
   bronze_bamboohr.employees:

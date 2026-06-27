@@ -1,9 +1,14 @@
 spec_version: 1
 description: >
-  cc_lines (Claude Code Accepted Lines) — Σ lines_added per person
-  (lines_added ← total_lines_accepted). bronze_claude_team.claude_team_code_metrics
-  → claude_team__ai_dev_usage (tool='claude_code') → silver class_ai_dev_usage →
-  gold insight.ai_bullet_rows → IC Bullet AI (…0013).
+  Metric: cc_lines — IC Bullet AI (…0013), #1440.
+  How it's computed (bronze → silver → gold):
+    • bronze: Claude Code daily per-user metrics (accepted lines, sessions, cost)
+    • silver: deduped to one row per user/day carrying the AI-accepted-lines count
+    • gold:   metric = sum of AI-accepted lines over the window
+
+  Team (median/range = the person's department):
+    alice 40 · bob 20 · carol 10 (alice row re-synced once → must not double)
+    → median 20, range [10, 40].
 
 bronze:
   bronze_bamboohr.employees:

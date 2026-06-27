@@ -1,7 +1,14 @@
 spec_version: 1
 description: >
-  cc_active (Claude Code — active members) — 1 per active claude_code member; an
-  "active" metric → value=1 for the requested person, range_max = team headcount.
+  Metric: cc_active — IC Bullet AI (…0013), #1440.
+  How it's computed (bronze → silver → gold):
+    • bronze: Claude Code daily per-user metrics — one row marks a Claude Code user
+    • silver: deduped to one row per user/day
+    • gold:   an "active" metric — value=1 for the requested person; range_max =
+              count of active Claude Code members in the team (median is 0 by rule)
+
+  Team (median/range = the person's department):
+    alice · bob · carol all active → value 1, median 0, range [0, 3].
 
 bronze:
   bronze_bamboohr.employees:
